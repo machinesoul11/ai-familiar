@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { createEventSink, createRoutingSubscriber, consoleDecisionSink } from '../bus.js';
 import { createDaemon, resolveStateRootFromEnv } from '../daemon.js';
 import { createDecisionLedger } from '../ledger.js';
+import { createArchRecapSubscriber } from '../archRecap.js';
+import { createArchRecapDeps } from '../archRecapDeps.js';
 
 const SOCKET_NAME = 'daemon.sock';
 const PIDFILE_NAME = 'daemon.pid';
@@ -55,6 +57,7 @@ async function serveDaemon(): Promise<void> {
   const daemon = createDaemon({
     sink: createEventSink([
       createRoutingSubscriber({ sinks: [consoleDecisionSink(), ledger.sink] }),
+      createArchRecapSubscriber(createArchRecapDeps(stateRoot)),
     ]),
   });
 
