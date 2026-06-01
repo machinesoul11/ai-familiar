@@ -5,6 +5,8 @@
   "type": "module",
   "description": "Ambient awareness companion for long-running coding-agent sessions.",
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "pretest": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "test:watch": "vitest"
   },
