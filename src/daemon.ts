@@ -34,9 +34,14 @@ type ValidationResult =
 type SignalName = 'SIGTERM' | 'SIGINT';
 
 const DEFAULT_STATE_ROOT_NAME = '.familiar';
+const DEFAULT_SOCKET_NAME = 'daemon.sock';
 
 export function createDaemon(opts: DaemonOptions = {}): Daemon {
   return new LocalDaemon(opts);
+}
+
+export function resolveStateRootFromEnv(env: NodeJS.ProcessEnv): string {
+  return resolve(env.FAMILIAR_HOME ?? join(homedir(), DEFAULT_STATE_ROOT_NAME));
 }
 
 class LocalDaemon implements Daemon {
@@ -203,12 +208,12 @@ class LocalDaemon implements Daemon {
 }
 
 function resolveStateRoot(stateRoot: string | undefined): string {
-  return resolve(stateRoot ?? process.env.FAMILIAR_HOME ?? join(homedir(), DEFAULT_STATE_ROOT_NAME));
+  return stateRoot ? resolve(stateRoot) : resolveStateRootFromEnv(process.env);
 }
 
 function resolveSocketPath(stateRoot: string, socketPath: string | undefined): string {
   if (!socketPath) {
-    return join(stateRoot, 'daemon.sock');
+    return join(stateRoot, DEFAULT_SOCKET_NAME);
   }
 
   return isAbsolute(socketPath) ? resolve(socketPath) : resolve(stateRoot, socketPath);
