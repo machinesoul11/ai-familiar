@@ -45,13 +45,13 @@ export function createArchRecapSubscriber(deps: ArchRecapDeps): EventSubscriber 
       }
 
       if (event.kind === 'run-finished') {
+        const base = store.get(event.sessionId);
+
+        if (base === undefined) {
+          return;
+        }
+
         deferSafely(deps, () => {
-          const base = store.get(event.sessionId);
-
-          if (base === undefined) {
-            return;
-          }
-
           const reader = deps.makeReader(base.cwd);
 
           if (reader === null) {

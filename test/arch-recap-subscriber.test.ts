@@ -213,12 +213,12 @@ export const x = 1;`
       expect(expectedRecap).toContain('Boundary violations (1)');
     });
 
-    it('Criterion 5: does nothing if no base is stored for the session', () => {
+    it('Criterion 5 (REVISED): does nothing if no base is stored, and does not defer', () => {
       const subscriber = createArchRecapSubscriber(deps);
       const event = makeEvent('run-finished', 's99', {}); // No base for s99
       subscriber(event);
 
-      expect(defer).toHaveBeenCalledOnce();
+      expect(defer).not.toHaveBeenCalled();
       expect(makeReader).not.toHaveBeenCalled();
       expect(writeRecap).not.toHaveBeenCalled();
     });
@@ -266,6 +266,64 @@ export const x = 1;`
       expect(captureBase).toHaveBeenCalledWith('/repo');
       expect(makeReader).toHaveBeenCalledWith('/repo');
       expect(writeRecap).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('Criterion C-RACE: Race condition between run-finished and session-end', () => {
+    it('still writes a recap if session-end runs before the deferred task', () => {
+      // Setup: queuing defer
+      const tasks: (() => void)[] = [];
+      defer.mockImplementation((task) => tasks.push(task));
+
+      // Setup: A stored base and a change to analyze
+      const baseRef = 'RACE_SHA';
+      const sessionId = 's_race';
+      store.set(sessionId, { baseRef, cwd: '/repo' });
+
+      fakeReader.diffResult = 'M	src/a/x.ts';
+      fakeReader.blobs.set(`${baseRef} src/a/x.ts`, 'export const x = 1;');
+      fakeReader.working.set(
+        'src/a/x.ts',
+        `import { y } from '../b/y.js';
+export const x = y;`
+      );
+      fakeReader.working.set(MANIFEST_PATH, null);
+      makeReader.mockReturnValue(fakeReader);
+
+      const subscriber = createArchRecapSubscriber(deps);
+
+      // 1. Dispatch run-finished (which should capture the base and queue a task)
+      const finishEvent = makeEvent('run-finished', sessionId, {});
+      subscriber(finishEvent);
+
+      // 2. Dispatch session-end synchronously (which should delete the base from the store)
+      const endEvent = makeEvent('session-end', sessionId, {});
+      subscriber(endEvent);
+
+      // Assert preconditions before running the task
+      expect(store.has(sessionId)).toBe(false); // Base is gone from the store
+      expect(tasks.length).toBe(1); // One task was queued
+      expect(writeRecap).not.toHaveBeenCalled(); // No I/O yet
+
+      // 3. Manually run the deferred task
+      tasks.forEach((task) => task());
+
+      // 4. Assert the work was still done correctly
+      expect(makeReader).toHaveBeenCalledWith('/repo');
+      expect(writeRecap).toHaveBeenCalledOnce();
+
+      // Compute expected recap to prove the captured base was used
+      const change = readChange(fakeReader, baseRef);
+      const manifest = parseManifest(fakeReader.readWorking(MANIFEST_PATH));
+      const summary = buildArchSummary({
+        files: change.files,
+        contents: change.contents,
+        manifest,
+      });
+      const expectedRecap = formatArchRecap(summary);
+
+      expect(writeRecap).toHaveBeenCalledWith(expectedRecap);
+      expect(expectedRecap).toContain('New cross-module coupling (1)');
     });
   });
 

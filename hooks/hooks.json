@@ -1,7 +1,10 @@
 {
   "hooks": {
     "SessionStart": [
-      { "matcher": "", "hooks": [ { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/bin/familiar-daemon.js\" --ensure" } ] }
+      { "matcher": "", "hooks": [
+        { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/bin/familiar-daemon.js\" --ensure" },
+        { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/bin/familiar-hook.js\" SessionStart" }
+      ] }
     ],
     "Stop": [
       { "matcher": "", "hooks": [ { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/bin/familiar-hook.js\" Stop" } ] }
