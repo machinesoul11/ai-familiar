@@ -1,0 +1,5 @@
+node_modules/
+dist/
+
+# Working design docs & contracts — kept local, not published until release
+docs/

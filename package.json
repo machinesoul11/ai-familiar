@@ -1,0 +1,16 @@
+{
+  "name": "familiar-daemon",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Ambient awareness companion for long-running coding-agent sessions.",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.8"
+  }
+}
