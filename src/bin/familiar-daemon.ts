@@ -3,6 +3,7 @@ import { closeSync, mkdirSync, openSync, unlinkSync, writeFileSync } from 'node:
 import { createConnection } from 'node:net';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createEventSink, createRouterSubscriber } from '../bus.js';
 import { createDaemon, resolveStateRootFromEnv } from '../daemon.js';
 
 const SOCKET_NAME = 'daemon.sock';
@@ -49,7 +50,7 @@ async function ensureDaemon(): Promise<void> {
 async function serveDaemon(): Promise<void> {
   const stateRoot = resolveStateRootFromEnv(process.env);
   const pidfilePath = join(stateRoot, PIDFILE_NAME);
-  const daemon = createDaemon();
+  const daemon = createDaemon({ sink: createEventSink([createRouterSubscriber()]) });
 
   try {
     await daemon.start();
