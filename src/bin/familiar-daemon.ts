@@ -3,8 +3,9 @@ import { closeSync, mkdirSync, openSync, unlinkSync, writeFileSync } from 'node:
 import { createConnection } from 'node:net';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createEventSink, createRouterSubscriber } from '../bus.js';
+import { createEventSink, createRoutingSubscriber, consoleDecisionSink } from '../bus.js';
 import { createDaemon, resolveStateRootFromEnv } from '../daemon.js';
+import { createDecisionLedger } from '../ledger.js';
 
 const SOCKET_NAME = 'daemon.sock';
 const PIDFILE_NAME = 'daemon.pid';
@@ -50,7 +51,12 @@ async function ensureDaemon(): Promise<void> {
 async function serveDaemon(): Promise<void> {
   const stateRoot = resolveStateRootFromEnv(process.env);
   const pidfilePath = join(stateRoot, PIDFILE_NAME);
-  const daemon = createDaemon({ sink: createEventSink([createRouterSubscriber()]) });
+  const ledger = createDecisionLedger();
+  const daemon = createDaemon({
+    sink: createEventSink([
+      createRoutingSubscriber({ sinks: [consoleDecisionSink(), ledger.sink] }),
+    ]),
+  });
 
   try {
     await daemon.start();
