@@ -10,7 +10,13 @@ export interface SpokenMessage {
   text: string;
 }
 
-export type ChannelMessage = SpokenMessage;
+export interface NotificationMessage {
+  kind: 'notification';
+  title: string;
+  body: string;
+}
+
+export type ChannelMessage = SpokenMessage | NotificationMessage;
 
 export interface DeliveryChannel {
   readonly kind: ChannelKind;
