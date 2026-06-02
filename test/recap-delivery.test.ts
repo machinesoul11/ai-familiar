@@ -10,8 +10,8 @@ interface DispatchCall {
   message: ChannelMessage;
 }
 
-describe('Recap Delivery Composer (AC 12-17)', () => {
-  it('AC12: createRecapDelivery(fake) returns a function; construction calls dispatch zero times', () => {
+describe('Recap Delivery Composer (AC 17-19)', () => {
+  it('AC17: createRecapDelivery(fake) returns a function; construction calls dispatch zero times', () => {
     const calls: DispatchCall[] = [];
     const fakeDispatch: Dispatcher = (target, message) => calls.push({ target, message });
     
@@ -21,7 +21,7 @@ describe('Recap Delivery Composer (AC 12-17)', () => {
     expect(calls.length).toBe(0);
   });
 
-  it('AC13: Empty summary -> dispatch called once with correct no-changes text', () => {
+  it('AC17: Empty summary -> dispatch called once with correct no-changes text', () => {
     const calls: DispatchCall[] = [];
     const deliverRecap = createRecapDelivery((target, message) => calls.push({ target, message }));
     
@@ -36,14 +36,14 @@ describe('Recap Delivery Composer (AC 12-17)', () => {
     deliverRecap(emptySummary);
     
     expect(calls.length).toBe(1);
-    expect(calls[0].target).toBe('notification'); // AC16 Target is always notification
+    expect(calls[0].target).toBe('notification');
     expect(calls[0].message).toEqual({
-      kind: 'spoken', // AC16 kind is always spoken
+      kind: 'spoken',
       text: 'Run landed. No architectural changes.'
     });
   });
 
-  it('AC14: 3 modules -> dispatch called with 3 modules changed text', () => {
+  it('AC17: 3 modules -> dispatch called with 3 modules changed text', () => {
     const calls: DispatchCall[] = [];
     const deliverRecap = createRecapDelivery((target, message) => calls.push({ target, message }));
     
@@ -65,16 +65,16 @@ describe('Recap Delivery Composer (AC 12-17)', () => {
     });
   });
 
-  it('AC15: Full mix v=1, p=2, m=4, c=1 -> byte-exact full-mix line', () => {
+  it('AC17: Full mix v=1, p=2, m=4, c=1 -> byte-exact full-mix line', () => {
     const calls: DispatchCall[] = [];
     const deliverRecap = createRecapDelivery((target, message) => calls.push({ target, message }));
     
     const summary: ArchSummary = {
       kind: 'arch-summary',
-      modules: [{} as any, {} as any, {} as any, {} as any], // 4
-      newCouplings: [{} as any], // 1
-      protectedHits: [{} as any, {} as any], // 2
-      violations: [{} as any] // 1
+      modules: [{} as any, {} as any, {} as any, {} as any],
+      newCouplings: [{} as any],
+      protectedHits: [{} as any, {} as any],
+      violations: [{} as any]
     };
     
     deliverRecap(summary);
@@ -87,7 +87,29 @@ describe('Recap Delivery Composer (AC 12-17)', () => {
     });
   });
 
-  it('AC16 & AC17: Returns undefined, does not throw for any summary, target/kind constants', () => {
+  it('AC18: deliverRecap with a gist-producing finalMessage and concerns blends correctly', () => {
+    const calls: DispatchCall[] = [];
+    const deliverRecap = createRecapDelivery((target, message) => calls.push({ target, message }));
+    
+    const summary: ArchSummary = {
+      kind: 'arch-summary',
+      modules: [{} as any, {} as any, {} as any, {} as any],
+      newCouplings: [],
+      protectedHits: [{} as any, {} as any],
+      violations: [{} as any]
+    };
+    
+    deliverRecap(summary, 'Added backlinks and tag indexing; all tests pass.');
+    
+    expect(calls.length).toBe(1);
+    expect(calls[0].target).toBe('notification');
+    expect(calls[0].message).toEqual({
+      kind: 'spoken',
+      text: 'Added backlinks and tag indexing; all tests pass. Familiar flagged 1 boundary violation, 2 protected zones touched.'
+    });
+  });
+
+  it('AC19: Returns undefined, does not throw for any summary, target/kind constants', () => {
     const calls: DispatchCall[] = [];
     const deliverRecap = createRecapDelivery((target, message) => calls.push({ target, message }));
     
@@ -101,7 +123,7 @@ describe('Recap Delivery Composer (AC 12-17)', () => {
     
     let result;
     expect(() => {
-      result = deliverRecap(summary);
+      result = deliverRecap(summary, 'Safe message');
     }).not.toThrow();
     
     expect(result).toBeUndefined();

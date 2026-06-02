@@ -1,8 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
-import { shapeRecap, type ShapedRecap, type Summarizer, type SummarizerInput } from '../src/shaper.js';
+import { describe, it, expect } from 'vitest';
+import { shapeRecap, type ShapedRecap } from '../src/shaper.js';
 import type { ArchSummary } from '../src/summary.js';
 
-// Helper to create stubs for ArchSummary with specific counts
 const createSummary = (v = 0, p = 0, m = 0, c = 0): ArchSummary => ({
   kind: 'arch-summary',
   violations: Array(v).fill({
@@ -34,115 +33,88 @@ const createSummary = (v = 0, p = 0, m = 0, c = 0): ArchSummary => ({
 });
 
 describe('shapeRecap', () => {
-  // AC 1: Empty summary, no summarizer
-  it('should return "Run landed. No architectural changes." for empty summary', () => {
+  // AC 9: Empty summary -> unchanged
+  it('AC9: should return "Run landed. No architectural changes." for empty summary and no finalMessage', () => {
     const summary = createSummary(0, 0, 0, 0);
-    const result = shapeRecap({ summary });
-    expect(result.kind).toBe('shaped-recap');
-    expect(result.spokenLine).toBe('Run landed. No architectural changes.');
+    expect(shapeRecap({ summary }).spokenLine).toBe('Run landed. No architectural changes.');
+    expect(shapeRecap({ summary, finalMessage: null }).spokenLine).toBe('Run landed. No architectural changes.');
   });
 
-  // AC 2 & 4: Modules-only (m=3)
-  it('should handle modules-only summary (plural)', () => {
+  // AC 10: Modules-only -> unchanged
+  it('AC10: should handle modules-only summary (plural) with no finalMessage', () => {
     const summary = createSummary(0, 0, 3, 0);
-    const result = shapeRecap({ summary });
-    expect(result.spokenLine).toBe('Run landed: 3 modules changed.');
+    expect(shapeRecap({ summary }).spokenLine).toBe('Run landed: 3 modules changed.');
   });
 
-  // AC 3: Singular forms
-  it('should use singular forms for single counts', () => {
+  // Singular forms (3.1 line)
+  it('AC14: should use singular forms for single counts with no finalMessage', () => {
     expect(shapeRecap({ summary: createSummary(1, 0, 0, 0) }).spokenLine).toBe('Run landed: 1 boundary violation.');
     expect(shapeRecap({ summary: createSummary(0, 1, 0, 0) }).spokenLine).toBe('Run landed: 1 protected zone touched.');
     expect(shapeRecap({ summary: createSummary(0, 0, 1, 0) }).spokenLine).toBe('Run landed: 1 module changed.');
     expect(shapeRecap({ summary: createSummary(0, 0, 0, 1) }).spokenLine).toBe('Run landed: 1 new cross-module coupling.');
   });
 
-  // AC 4: Plural forms
-  it('should use plural forms for multiple counts', () => {
+  // Plural forms (3.1 line)
+  it('AC14: should use plural forms for multiple counts with no finalMessage', () => {
     expect(shapeRecap({ summary: createSummary(2, 0, 0, 0) }).spokenLine).toBe('Run landed: 2 boundary violations.');
     expect(shapeRecap({ summary: createSummary(0, 2, 0, 0) }).spokenLine).toBe('Run landed: 2 protected zones touched.');
     expect(shapeRecap({ summary: createSummary(0, 0, 2, 0) }).spokenLine).toBe('Run landed: 2 modules changed.');
     expect(shapeRecap({ summary: createSummary(0, 0, 0, 2) }).spokenLine).toBe('Run landed: 2 new cross-module couplings.');
   });
 
-  // AC 5 & 6: Full-mix order+join and non-empty clauses
-  it('should handle full-mix order and joining correctly', () => {
-    // v=1, p=2, m=4, c=1
+  // Full mix (3.1 line)
+  it('AC11: should handle full-mix order and joining correctly with no finalMessage', () => {
     const summary = createSummary(1, 2, 4, 1);
-    const result = shapeRecap({ summary });
-    expect(result.spokenLine).toBe('Run landed: 1 boundary violation, 2 protected zones touched, 4 modules changed, 1 new cross-module coupling.');
+    expect(shapeRecap({ summary }).spokenLine).toBe('Run landed: 1 boundary violation, 2 protected zones touched, 4 modules changed, 1 new cross-module coupling.');
   });
 
-  it('should only include non-empty clauses in correct order', () => {
-    // v=2, m=1 (no protected/couplings)
+  it('AC11: should only include non-empty clauses in correct order with no finalMessage', () => {
     const summary = createSummary(2, 0, 1, 0);
-    const result = shapeRecap({ summary });
-    expect(result.spokenLine).toBe('Run landed: 2 boundary violations, 1 module changed.');
+    expect(shapeRecap({ summary }).spokenLine).toBe('Run landed: 2 boundary violations, 1 module changed.');
   });
 
-  // AC 7: finalMessage ignored by deterministic path
-  it('should ignore finalMessage in deterministic path', () => {
+  // Gist present + no concerns
+  it('AC12: should return gist exactly when finalMessage is present and no concerns exist', () => {
+    const summary = createSummary(0, 0, 3, 0); // modules count does not count as a concern when gist is present
+    const finalMessage = 'Refactored the parser.';
+    expect(shapeRecap({ summary, finalMessage }).spokenLine).toBe('Refactored the parser.');
+  });
+
+  // Gist present + concerns
+  it('AC13/14: should blend gist with concerns, omitting modules count', () => {
+    const summary = createSummary(1, 2, 4, 0); // v=1, p=2, m=4, c=0
+    const finalMessage = 'Added backlinks and tag indexing; all tests pass.';
+    expect(shapeRecap({ summary, finalMessage }).spokenLine).toBe(
+      'Added backlinks and tag indexing; all tests pass. Familiar flagged 1 boundary violation, 2 protected zones touched.'
+    );
+  });
+
+  it('AC13/14: should blend gist with new couplings, omitting modules count', () => {
+    const summary = createSummary(0, 0, 5, 1); // m=5, c=1
+    const finalMessage = 'Some final message.';
+    expect(shapeRecap({ summary, finalMessage }).spokenLine).toBe(
+      'Some final message. Familiar flagged 1 new cross-module coupling.'
+    );
+  });
+
+  // Whitespace-only finalMessage
+  it('AC15: should treat whitespace-only finalMessage as no gist (deterministic line)', () => {
     const summary = createSummary(1, 0, 0, 0);
-    const expected = 'Run landed: 1 boundary violation.';
-    expect(shapeRecap({ summary, finalMessage: 'something' }).spokenLine).toBe(expected);
-    expect(shapeRecap({ summary, finalMessage: null }).spokenLine).toBe(expected);
-    expect(shapeRecap({ summary, finalMessage: '' }).spokenLine).toBe(expected);
+    expect(shapeRecap({ summary, finalMessage: '   ' }).spokenLine).toBe('Run landed: 1 boundary violation.');
+    expect(shapeRecap({ summary, finalMessage: '\n\n' }).spokenLine).toBe('Run landed: 1 boundary violation.');
   });
 
-  // AC 8: Summarizer returning a non-empty string
-  it('should use non-empty string from summarizer verbatim', () => {
+  // Determinism and type
+  it('AC16: should always return kind "shaped-recap", be deterministic, and not throw', () => {
     const summary = createSummary(1, 1, 1, 1);
-    const finalMessage = 'Custom message';
-    const summarizer: Summarizer = {
-      summarize: vi.fn().mockReturnValue('Verbatim custom output ')
-    };
-    const result = shapeRecap({ summary, finalMessage, summarizer });
-    expect(result.spokenLine).toBe('Verbatim custom output ');
-    expect(summarizer.summarize).toHaveBeenCalledWith({ summary, finalMessage });
-  });
-
-  it('should default finalMessage to null when omitted and calling summarizer', () => {
-    const summary = createSummary(0, 0, 0, 0);
-    const summarizer: Summarizer = {
-      summarize: vi.fn().mockReturnValue('custom')
-    };
-    shapeRecap({ summary, summarizer });
-    expect(summarizer.summarize).toHaveBeenCalledWith({ summary, finalMessage: null });
-  });
-
-  // AC 9: Summarizer returning null / '' / whitespace-only / a non-string
-  it('should fall back if summarizer returns null, empty, or whitespace', () => {
-    const summary = createSummary(1, 0, 0, 0);
-    const expected = 'Run landed: 1 boundary violation.';
+    const finalMessage = 'Test message';
     
-    expect(shapeRecap({ summary, summarizer: { summarize: () => null } }).spokenLine).toBe(expected);
-    expect(shapeRecap({ summary, summarizer: { summarize: () => '' } }).spokenLine).toBe(expected);
-    expect(shapeRecap({ summary, summarizer: { summarize: () => '   ' } }).spokenLine).toBe(expected);
-    // @ts-expect-error - testing non-string return for robustness
-    expect(shapeRecap({ summary, summarizer: { summarize: () => 123 } }).spokenLine).toBe(expected);
-  });
-
-  // AC 10: Summarizer that throws
-  it('should fall back if summarizer throws', () => {
-    const summary = createSummary(0, 0, 1, 0);
-    const summarizer: Summarizer = {
-      summarize: () => { throw new Error('fail'); }
-    };
-    const result = shapeRecap({ summary, summarizer });
-    expect(result.spokenLine).toBe('Run landed: 1 module changed.');
-  });
-
-  // AC 11: Determinism
-  it('should be deterministic', () => {
-    const summary = createSummary(1, 1, 1, 1);
-    const result1 = shapeRecap({ summary });
-    const result2 = shapeRecap({ summary });
-    expect(result1).toEqual(result2);
-  });
-
-  // AC 12: kind is always 'shaped-recap'
-  it('should always return kind "shaped-recap"', () => {
-    expect(shapeRecap({ summary: createSummary() }).kind).toBe('shaped-recap');
-    expect(shapeRecap({ summary: createSummary(1, 1, 1, 1), summarizer: { summarize: () => 'custom' } }).kind).toBe('shaped-recap');
+    expect(() => shapeRecap({ summary, finalMessage })).not.toThrow();
+    
+    const result = shapeRecap({ summary, finalMessage });
+    expect(result.kind).toBe('shaped-recap');
+    
+    // Determinism
+    expect(shapeRecap({ summary, finalMessage })).toEqual(result);
   });
 });

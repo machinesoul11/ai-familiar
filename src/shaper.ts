@@ -1,3 +1,4 @@
+import { condenseFinalMessage } from './condense.js';
 import type { ArchSummary } from './summary.js';
 
 export interface ShapedRecap {
@@ -5,47 +6,18 @@ export interface ShapedRecap {
   spokenLine: string;
 }
 
-export interface SummarizerInput {
-  summary: ArchSummary;
-  finalMessage: string | null;
-}
-
-export interface Summarizer {
-  summarize(input: SummarizerInput): string | null;
-}
-
 export function shapeRecap(input: {
   summary: ArchSummary;
   finalMessage?: string | null;
-  summarizer?: Summarizer;
 }): ShapedRecap {
-  const finalMessage = input.finalMessage ?? null;
-  const summarizedLine = summarize(input.summary, finalMessage, input.summarizer);
+  const gist = condenseFinalMessage(input.finalMessage ?? null);
 
   return {
     kind: 'shaped-recap',
-    spokenLine: summarizedLine ?? deterministicLine(input.summary),
+    spokenLine: gist === null
+      ? deterministicLine(input.summary)
+      : blendedLine(input.summary, gist),
   };
-}
-
-function summarize(
-  summary: ArchSummary,
-  finalMessage: string | null,
-  summarizer?: Summarizer,
-): string | null {
-  if (summarizer === undefined) {
-    return null;
-  }
-
-  try {
-    const line = summarizer.summarize({ summary, finalMessage });
-
-    return typeof line === 'string' && line.trim() !== ''
-      ? line
-      : null;
-  } catch {
-    return null;
-  }
 }
 
 function deterministicLine(summary: ArchSummary): string {
@@ -64,4 +36,21 @@ function deterministicLine(summary: ArchSummary): string {
     m > 0 ? `${m} module${m === 1 ? '' : 's'} changed` : null,
     c > 0 ? `${c} new cross-module coupling${c === 1 ? '' : 's'}` : null,
   ].filter((clause): clause is string => clause !== null).join(', ')}.`;
+}
+
+function blendedLine(summary: ArchSummary, gist: string): string {
+  const v = summary.violations.length;
+  const p = summary.protectedHits.length;
+  const c = summary.newCouplings.length;
+  const concerns = [
+    v > 0 ? `${v} boundary violation${v === 1 ? '' : 's'}` : null,
+    p > 0 ? `${p} protected zone${p === 1 ? '' : 's'} touched` : null,
+    c > 0 ? `${c} new cross-module coupling${c === 1 ? '' : 's'}` : null,
+  ].filter((clause): clause is string => clause !== null);
+
+  if (concerns.length === 0) {
+    return gist;
+  }
+
+  return `${gist} Familiar flagged ${concerns.join(', ')}.`;
 }
