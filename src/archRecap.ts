@@ -4,6 +4,7 @@ import { formatArchRecap } from './recap.js';
 import { buildArchSummary } from './summary.js';
 import type { EventSubscriber } from './bus.js';
 import type { NormalizedEvent } from './normalize.js';
+import type { ArchSummary } from './summary.js';
 
 export interface SessionBase {
   baseRef: string;
@@ -16,6 +17,7 @@ export interface ArchRecapDeps {
   writeRecap(text: string): void;
   defer(task: () => void): void;
   store?: Map<string, SessionBase>;
+  onRecap?(summary: ArchSummary): void;
 }
 
 export function createArchRecapSubscriber(deps: ArchRecapDeps): EventSubscriber {
@@ -62,6 +64,7 @@ export function createArchRecapSubscriber(deps: ArchRecapDeps): EventSubscriber 
           const manifest = parseManifest(reader.readWorking(MANIFEST_PATH));
           const summary = buildArchSummary({ files, contents, manifest });
           deps.writeRecap(formatArchRecap(summary));
+          deps.onRecap?.(summary);
         });
         return;
       }
