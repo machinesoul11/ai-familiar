@@ -53,6 +53,14 @@ async function ensureDaemon(): Promise<void> {
 
 async function serveDaemon(): Promise<void> {
   const stateRoot = resolveStateRootFromEnv(process.env);
+  for (const p of [join(process.cwd(), '.env'), join(stateRoot, '.env')]) {
+    try {
+      process.loadEnvFile(p);
+    } catch {
+      // Missing or unreadable env files are ignored.
+    }
+  }
+
   const pidfilePath = join(stateRoot, PIDFILE_NAME);
   const ledger = createDecisionLedger();
   const daemon = createDaemon({
