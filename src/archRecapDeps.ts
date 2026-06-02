@@ -18,6 +18,7 @@ export function createArchRecapDeps(stateRoot: string): ArchRecapDeps {
     captureBase: (cwd) => gitLine(cwd, ['rev-parse', 'HEAD']),
     makeReader: (cwd) => makeGitReader(cwd),
     writeRecap: (text) => appendRecap(stateRoot, text),
+    readTranscript: (path) => readFileOrNull(path),
     defer: (task) => {
       setImmediate(task);
     },

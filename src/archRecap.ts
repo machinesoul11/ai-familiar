@@ -2,6 +2,7 @@ import { readChange, type RepoReader } from './changeReader.js';
 import { parseManifest, MANIFEST_PATH } from './manifestLoader.js';
 import { formatArchRecap } from './recap.js';
 import { buildArchSummary } from './summary.js';
+import { extractFinalMessage } from './transcript.js';
 import type { EventSubscriber } from './bus.js';
 import type { NormalizedEvent } from './normalize.js';
 import type { ArchSummary } from './summary.js';
@@ -17,7 +18,8 @@ export interface ArchRecapDeps {
   writeRecap(text: string): void;
   defer(task: () => void): void;
   store?: Map<string, SessionBase>;
-  onRecap?(summary: ArchSummary): void;
+  onRecap?(summary: ArchSummary, finalMessage: string | null): void;
+  readTranscript?(path: string): string | null;
 }
 
 export function createArchRecapSubscriber(deps: ArchRecapDeps): EventSubscriber {
@@ -64,7 +66,9 @@ export function createArchRecapSubscriber(deps: ArchRecapDeps): EventSubscriber 
           const manifest = parseManifest(reader.readWorking(MANIFEST_PATH));
           const summary = buildArchSummary({ files, contents, manifest });
           deps.writeRecap(formatArchRecap(summary));
-          deps.onRecap?.(summary);
+          if (deps.onRecap !== undefined) {
+            deps.onRecap(summary, readFinalMessage(deps, event));
+          }
         });
         return;
       }
@@ -100,6 +104,36 @@ function cwdOf(event: NormalizedEvent): string | null {
   }
 
   return payload.cwd;
+}
+
+function readFinalMessage(deps: ArchRecapDeps, event: NormalizedEvent): string | null {
+  const path = transcriptPathOf(event);
+
+  if (path === null || deps.readTranscript === undefined) {
+    return null;
+  }
+
+  const raw = deps.readTranscript(path);
+
+  if (raw === null) {
+    return null;
+  }
+
+  return extractFinalMessage(raw);
+}
+
+function transcriptPathOf(event: NormalizedEvent): string | null {
+  const payload = event.raw?.payload;
+
+  if (
+    !isRecord(payload) ||
+    typeof payload.transcript_path !== 'string' ||
+    payload.transcript_path === ''
+  ) {
+    return null;
+  }
+
+  return payload.transcript_path;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

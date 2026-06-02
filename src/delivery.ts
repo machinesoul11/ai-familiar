@@ -4,7 +4,9 @@ import { createDispatcher } from './dispatch.js';
 import { createRecapDelivery } from './recapDelivery.js';
 import type { ArchSummary } from './summary.js';
 
-export function createDelivery(): { deliverRecap: (summary: ArchSummary) => void } {
+export function createDelivery(): {
+  deliverRecap: (summary: ArchSummary, finalMessage: string | null) => void;
+} {
   const dispatch = createDispatcher([createTtsChannel(createSayBackend())]);
 
   return { deliverRecap: createRecapDelivery(dispatch) };
