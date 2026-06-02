@@ -64,10 +64,10 @@ async function serveDaemon(): Promise<void> {
 
   const pidfilePath = join(stateRoot, PIDFILE_NAME);
   const ledger = createDecisionLedger();
-  const deliverRecap = createDelivery().deliverRecap;
+  const delivery = createDelivery();
   const daemon = createDaemon({
     sink: createEventSink([
-      createRoutingSubscriber({ sinks: [consoleDecisionSink(), ledger.sink] }),
+      createRoutingSubscriber({ sinks: [consoleDecisionSink(), ledger.sink, delivery.decisionSink] }),
       createArchRecapSubscriber({
         ...createArchRecapDeps(stateRoot),
         onRecap: (summary, finalMessage) => {
@@ -77,7 +77,7 @@ async function serveDaemon(): Promise<void> {
             // A snapshot-write failure must never mute the live spoken recap.
           }
 
-          deliverRecap(summary, finalMessage);
+          delivery.deliverRecap(summary, finalMessage);
         },
       }),
     ]),
