@@ -9,6 +9,7 @@ import { createDecisionLedger } from '../ledger.js';
 import { createArchRecapSubscriber } from '../archRecap.js';
 import { createArchRecapDeps } from '../archRecapDeps.js';
 import { createDelivery } from '../delivery.js';
+import { writeSnapshotFile } from '../recapSnapshotStore.js';
 
 const SOCKET_NAME = 'daemon.sock';
 const PIDFILE_NAME = 'daemon.pid';
@@ -63,12 +64,21 @@ async function serveDaemon(): Promise<void> {
 
   const pidfilePath = join(stateRoot, PIDFILE_NAME);
   const ledger = createDecisionLedger();
+  const deliverRecap = createDelivery().deliverRecap;
   const daemon = createDaemon({
     sink: createEventSink([
       createRoutingSubscriber({ sinks: [consoleDecisionSink(), ledger.sink] }),
       createArchRecapSubscriber({
         ...createArchRecapDeps(stateRoot),
-        onRecap: createDelivery().deliverRecap,
+        onRecap: (summary, finalMessage) => {
+          try {
+            writeSnapshotFile(stateRoot, { v: 1, summary, finalMessage });
+          } catch {
+            // A snapshot-write failure must never mute the live spoken recap.
+          }
+
+          deliverRecap(summary, finalMessage);
+        },
       }),
     ]),
   });
