@@ -10,6 +10,10 @@ import { createArchRecapSubscriber } from '../archRecap.js';
 import { createArchRecapDeps } from '../archRecapDeps.js';
 import { createDelivery } from '../delivery.js';
 import { writeSnapshotFile } from '../recapSnapshotStore.js';
+import { createAvatarPublishSocket } from '../avatarPublishSocket.js';
+import { createAvatarBackend } from '../avatarBackend.js';
+import { createAvatarChannel } from '../avatarChannel.js';
+import { createAvatarSubscriber } from '../avatarSubscriber.js';
 
 const SOCKET_NAME = 'daemon.sock';
 const PIDFILE_NAME = 'daemon.pid';
@@ -65,9 +69,19 @@ async function serveDaemon(): Promise<void> {
   const pidfilePath = join(stateRoot, PIDFILE_NAME);
   const ledger = createDecisionLedger();
   const delivery = createDelivery();
+
+  // Avatar lane (4.2c): an ungated, always-on projection of the event stream onto Haru.
+  // The publish socket broadcasts NDJSON AvatarCommand frames on <stateRoot>/avatar.sock;
+  // a connected overlay (4.2b) renders them. pub.sink exists at construction, so the channel
+  // is safe to build (and deliver to) before pub.start() — pre-start writes fan out to zero
+  // subscribers, a harmless no-op.
+  const avatarPublish = createAvatarPublishSocket();
+  const avatarChannel = createAvatarChannel(createAvatarBackend(avatarPublish.sink));
+
   const daemon = createDaemon({
     sink: createEventSink([
       createRoutingSubscriber({ sinks: [consoleDecisionSink(), ledger.sink, delivery.decisionSink] }),
+      createAvatarSubscriber(avatarChannel),
       createArchRecapSubscriber({
         ...createArchRecapDeps(stateRoot),
         onRecap: (summary, finalMessage) => {
@@ -91,6 +105,26 @@ async function serveDaemon(): Promise<void> {
     }
 
     throw error;
+  }
+
+  // Start the avatar publish socket. A failed avatar socket must NEVER stop the daemon from
+  // serving events — degrade to an unconnected channel (writes fan out to zero subscribers).
+  try {
+    await avatarPublish.start();
+  } catch {
+    // Avatar overlay is optional; the daemon keeps running without it.
+  }
+
+  // Coordinate the avatar socket's shutdown with termination. The daemon's own LocalDaemon
+  // registers SIGTERM/SIGINT -> stop() -> process.exit(0); daemon.ts is frozen, so the entrypoint
+  // closes the avatar socket separately, best-effort. On a hard kill where process.exit wins the
+  // race, a leftover avatar.sock self-heals on next start (4.2a removeStaleSocketOrFail).
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+    process.on(signal, () => {
+      void avatarPublish.stop().catch(() => {
+        // Best-effort: a failed close still leaves a self-healing stale socket.
+      });
+    });
   }
 
   writeFileSync(pidfilePath, String(process.pid));
