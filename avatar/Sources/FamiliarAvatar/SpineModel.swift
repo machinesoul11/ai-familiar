@@ -68,7 +68,7 @@ final class SpineModel: AvatarModel {
         case let .expression(mood):
             play(mood)
         case .thought:
-            break // inner-thought DISPLAY is Phase 4.3; the overlay ignores it here
+            break // thought has no animation; the renderer-agnostic ThoughtBubble overlay shows it (4.3)
         }
     }
 

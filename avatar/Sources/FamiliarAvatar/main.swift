@@ -64,6 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var model: (any AvatarModel)!
     private var monitors: [Any] = []
     private var engagement: EngagementController!
+    private var thoughtBubble: ThoughtBubbleController!
 
     init(options: Options) {
         self.options = options
@@ -112,8 +113,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         engagement.start()
         if options.startLocked { engagement.toggleLock() }
 
+        // Inner-thoughts display (4.3): a renderer-agnostic bubble floating above
+        // her head that SHOWS the silent `thought` text but never speaks it.
+        thoughtBubble = ThoughtBubbleController(parent: window)
+
         subscriber = SocketSubscriber(path: options.socketPath) { [weak self] command in
             self?.model.apply(command)
+            self?.thoughtBubble.apply(command)
         }
         subscriber.start()
 
