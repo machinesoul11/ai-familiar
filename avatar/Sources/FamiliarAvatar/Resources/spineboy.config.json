@@ -1,0 +1,21 @@
+{
+  "id": "spineboy",
+  "name": "Spineboy (default)",
+  "scale": 1.0,
+  "defaultAnimation": "idle",
+  "assets": {
+    "skeleton": "spineboy-pro.skel",
+    "atlas": "spineboy-pma.atlas",
+    "texture": "spineboy-pma.png"
+  },
+  "states": {
+    "idle":     { "animation": "idle",      "loop": true },
+    "working":  { "animation": "walk",      "loop": true },
+    "blocked":  { "animation": "aim",       "loop": true },
+    "done":     { "animation": "idle",      "loop": true },
+    "ready":    { "animation": "jump",      "loop": false, "fallback": "idle" },
+    "happy":    { "animation": "jump",      "loop": false, "fallback": "idle" },
+    "thinking": { "animation": "idle-turn", "loop": false, "fallback": "idle" },
+    "alert":    { "animation": "shoot",     "loop": false, "fallback": "idle" }
+  }
+}

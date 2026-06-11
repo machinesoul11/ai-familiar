@@ -60,18 +60,22 @@ const char *spine_page_path(SpineInstance *inst, int32_t index); /* texture file
 int32_t spine_page_width(SpineInstance *inst, int32_t index);
 int32_t spine_page_height(SpineInstance *inst, int32_t index);
 
+/* True if the atlas is premultiplied-alpha (pma:true). The renderer uses this to
+ * pick the texture path so both pma and straight-alpha characters composite right. */
+bool spine_is_pma(SpineInstance *inst);
+
 /* Setup-pose bounds (skeleton units) — Swift uses these to fit/center the
  * character in the window. */
 void spine_get_bounds(SpineInstance *inst, float *outX, float *outY, float *outWidth, float *outHeight);
 
 bool spine_has_animation(SpineInstance *inst, const char *name);
 
-/* Track 0: the looping base activity (phase). No-op if name is unknown. */
-void spine_set_base_animation(SpineInstance *inst, const char *name, bool loop);
-
-/* Track 1: a one-shot overlay (mood / ready beacon) that plays once then mixes
- * back to nothing, leaving the base animation visible. No-op if name unknown. */
-void spine_play_oneshot(SpineInstance *inst, const char *name);
+/* Play `name` on the base track. If loop is true it repeats. If loop is false and
+ * `fallback` is non-null/non-empty, `fallback` (looping) is queued to play once
+ * `name` finishes — i.e. "play once, then return to fallback". No-op if `name` is
+ * an unknown animation. This is the single primitive the config-driven state model
+ * (animation/loop/fallback per state) compiles down to. */
+void spine_play(SpineInstance *inst, const char *name, bool loop, const char *fallback);
 
 /* Advance the animation by deltaSeconds, recompute world transforms, and batch
  * the skeleton into draw commands. Returns the command count; *outCommands is

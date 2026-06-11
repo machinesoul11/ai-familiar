@@ -9,6 +9,7 @@ struct Options {
     var monitorIndex: Int
     var clickThrough: Bool
     var windowSize: CGFloat
+    var characterDir: String?
 
     static func parse() -> Options {
         let env = ProcessInfo.processInfo.environment
@@ -18,7 +19,8 @@ struct Options {
             socketPath: (home as NSString).appendingPathComponent("avatar.sock"),
             monitorIndex: 1,          // monitor-2 default (dual-display setup)
             clickThrough: false,
-            windowSize: 360
+            windowSize: 360,
+            characterDir: nil
         )
         var args = Array(CommandLine.arguments.dropFirst())
         while let arg = args.first {
@@ -27,6 +29,7 @@ struct Options {
             case "--socket":      if let v = args.first { opts.socketPath = v; args.removeFirst() }
             case "--monitor":     if let v = args.first, let n = Int(v) { opts.monitorIndex = n; args.removeFirst() }
             case "--size":        if let v = args.first, let n = Double(v) { opts.windowSize = CGFloat(n); args.removeFirst() }
+            case "--character":   if let v = args.first { opts.characterDir = v; args.removeFirst() }
             case "--click-through": opts.clickThrough = true
             case "--help", "-h":
                 print("""
@@ -34,6 +37,8 @@ struct Options {
                   --socket <path>     Unix socket to subscribe to (default $FAMILIAR_HOME/avatar.sock)
                   --monitor <n>       0-based display index (default 1 = monitor-2)
                   --size <points>     square window edge (default 360)
+                  --character <dir>   character pack folder (a *.config.json + assets);
+                                      else $FAMILIAR_HOME/character/, else bundled spineboy
                   --click-through     start in click-through (pet) mode
                 Hotkeys (global, need Accessibility permission):
                   ⌃⌥⌘P  toggle click-through    ⌃⌥⌘Q  quit
@@ -62,16 +67,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        guard let skel = Bundle.module.url(forResource: "spineboy-pro", withExtension: "skel", subdirectory: "Resources"),
-              let atlas = Bundle.module.url(forResource: "spineboy-pma", withExtension: "atlas", subdirectory: "Resources") else {
-            fail("bundled spineboy assets not found")
+        guard let character = ResolvedCharacter.resolve(option: options.characterDir) else {
+            fail("no character pack found (and bundled spineboy missing)")
             return
         }
-        guard let model = SpineModel(skelPath: skel.path, atlasPath: atlas.path) else {
-            fail("failed to load spine skeleton/atlas")
+        guard let model = SpineModel(character: character) else {
+            fail("failed to load character '\(character.config.id ?? "?")' from \(character.directory.path)")
             return
         }
         self.model = model
+        FileHandle.standardError.write(Data("[avatar] character: \(character.config.name ?? character.config.id ?? "?") (\(character.directory.lastPathComponent))\n".utf8))
 
         // Place a square window near the bottom-right of the chosen display.
         let screens = NSScreen.screens

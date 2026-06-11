@@ -68,9 +68,13 @@ final class MetalSpineRenderer: NSObject, MTKViewDelegate {
 
         fragment float4 f_main(VOut in [[stage_in]],
                                texture2d<float> tex [[texture(0)]],
-                               sampler s            [[sampler(0)]]) {
+                               sampler s            [[sampler(0)]],
+                               constant float& premul [[buffer(0)]]) {
             float4 t = tex.sample(s, in.uv);
-            // texture is premultiplied (pma atlas); premultiply the vertex tint too
+            // The blend pipeline expects premultiplied output. A pma atlas is
+            // already premultiplied (premul=0); a straight-alpha atlas isn't, so
+            // premultiply it here (premul=1). The vertex tint is premultiplied too.
+            if (premul > 0.5) { t = float4(t.rgb * t.a, t.a); }
             float4 vc = float4(in.color.rgb * in.color.a, in.color.a);
             return t * vc;
         }
@@ -136,7 +140,7 @@ final class MetalSpineRenderer: NSObject, MTKViewDelegate {
     private func projection(viewSize: CGSize) -> simd_float4x4 {
         let b = model.bounds
         let aspect = viewSize.height > 0 ? Float(viewSize.width / viewSize.height) : 1
-        let fit: Float = 0.85
+        let fit: Float = min(0.97, 0.85 * model.scale) // config scale: larger = bigger character
         let visH = max(b.h, 1) / fit
         let visW = visH * aspect
         let cx = b.x + b.w / 2
@@ -201,8 +205,10 @@ final class MetalSpineRenderer: NSObject, MTKViewDelegate {
                                                length: indices.count * MemoryLayout<UInt16>.stride,
                                                options: .storageModeShared) {
                 var mvp = projection(viewSize: view.drawableSize)
+                var premultiply: Float = model.isPMA ? 0 : 1
                 encoder.setVertexBuffer(vbuffer, offset: 0, index: 0)
                 encoder.setVertexBytes(&mvp, length: MemoryLayout<simd_float4x4>.size, index: 1)
+                encoder.setFragmentBytes(&premultiply, length: MemoryLayout<Float>.size, index: 0)
                 encoder.setFragmentSamplerState(sampler, index: 0)
 
                 for batch in batches {

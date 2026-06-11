@@ -25,6 +25,7 @@ struct PageInfo {
 	std::string path;
 	int width = 0;
 	int height = 0;
+	bool pma = false;
 };
 
 // TextureLoader that does NO GPU work — it only records each atlas page so the
@@ -39,6 +40,7 @@ public:
 		info.path = path.buffer() ? path.buffer() : "";
 		info.width = page.width;
 		info.height = page.height;
+		info.pma = page.pma;
 		const intptr_t index = static_cast<intptr_t>(pages.size());
 		pages.push_back(info);
 		// Atlas.cpp copies page.texture into each region's rendererObject, which
@@ -110,6 +112,11 @@ SpineInstance *spine_create(const char *skelPath, const char *atlasPath) {
 	return inst;
 }
 
+bool spine_is_pma(SpineInstance *inst) {
+	if (!inst || inst->textureLoader.pages.empty()) return false;
+	return inst->textureLoader.pages[0].pma;
+}
+
 void spine_destroy(SpineInstance *inst) {
 	delete inst;
 }
@@ -146,18 +153,14 @@ bool spine_has_animation(SpineInstance *inst, const char *name) {
 	return inst->skeletonData->findAnimation(String(name)) != nullptr;
 }
 
-void spine_set_base_animation(SpineInstance *inst, const char *name, bool loop) {
+void spine_play(SpineInstance *inst, const char *name, bool loop, const char *fallback) {
 	if (!inst || !inst->state || !name) return;
 	if (!inst->skeletonData->findAnimation(String(name))) return;
 	inst->state->setAnimation(0, String(name), loop);
-}
-
-void spine_play_oneshot(SpineInstance *inst, const char *name) {
-	if (!inst || !inst->state || !name) return;
-	if (!inst->skeletonData->findAnimation(String(name))) return;
-	inst->state->setAnimation(1, String(name), false);
-	// Mix track 1 back to nothing once the one-shot finishes, revealing track 0.
-	inst->state->addEmptyAnimation(1, 0.2f, 0.0f);
+	if (!loop && fallback && fallback[0] != '\0' && inst->skeletonData->findAnimation(String(fallback))) {
+		// Play once, then queue the fallback (looping) to resume after it ends.
+		inst->state->addAnimation(0, String(fallback), true, 0.0f);
+	}
 }
 
 int32_t spine_update_and_render(SpineInstance *inst, float deltaSeconds, const SpineDrawCommand **outCommands) {

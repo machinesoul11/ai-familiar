@@ -1,0 +1,21 @@
+{
+  "id": "valerie",
+  "name": "Valerie",
+  "scale": 1.0,
+  "defaultAnimation": "idle",
+  "assets": {
+    "skeleton": "valerie-pro.skel",
+    "atlas": "valerie.atlas",
+    "texture": "valerie.png"
+  },
+  "states": {
+    "idle":     { "animation": "idle",      "loop": true },
+    "working":  { "animation": "typing",    "loop": true },
+    "blocked":  { "animation": "concerned", "loop": true },
+    "done":     { "animation": "smile",     "loop": false, "fallback": "idle" },
+    "ready":    { "animation": "standby",   "loop": true },
+    "happy":    { "animation": "wave",      "loop": false, "fallback": "idle" },
+    "thinking": { "animation": "thinking",  "loop": true },
+    "alert":    { "animation": "alert",     "loop": true }
+  }
+}
