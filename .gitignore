@@ -12,3 +12,7 @@ docs/
 # Swift avatar build artifacts (Phase 4.2b)
 avatar/.build/
 avatar/.swiftpm/
+
+# Live2D Cubism sample model (Free Material License — kept local, never redistributed;
+# the real character is bought and lives in $FAMILIAR_HOME/character/)
+avatar/characters/haru/
