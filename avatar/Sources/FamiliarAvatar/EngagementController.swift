@@ -35,10 +35,21 @@ final class EngagementController {
     private var globalMonitor: Any?
     private let highlight = CAShapeLayer()
 
-    /// Fired when she is engaged and you click her body WITHOUT dragging (a tap).
-    /// The 4.4 touch channel injects the upstream "pull-recap" intent here. The
-    /// controller stays renderer-agnostic — it only knows "tapped", not what it means.
+    /// Fired when she is engaged and you click her body WITHOUT dragging and
+    /// release quickly (a tap). The 4.4 touch channel injects the upstream
+    /// "pull-recap" intent here. The controller stays renderer-agnostic — it only
+    /// knows "tapped", not what it means.
     var onTap: (() -> Void)?
+
+    /// Fired when she is engaged and you press her body WITHOUT dragging but HOLD
+    /// past `longPressThreshold` before releasing (a long-press). The 5.2 recall
+    /// gesture injects the upstream "recall" intent here. Same body, no movement —
+    /// only the hold duration distinguishes it from `onTap`.
+    var onLongPress: (() -> Void)?
+
+    /// Hold duration (seconds) above which a stationary press is a long-press
+    /// rather than a tap.
+    private let longPressThreshold: TimeInterval = 0.5
 
     init(window: OverlayWindow,
          view: DraggableMetalView,
@@ -147,11 +158,15 @@ final class EngagementController {
     }
 
     /// Called after a body press completes (performDrag runs its own loop until
-    /// mouse-up). If the window did not move, the press was a TAP — fire onTap (the
-    /// 4.4 pull-recap intent). Either way, refresh the auto-release timeout from the
-    /// end of the interaction.
-    func viewInteractionEnded(moved: Bool) {
-        if !moved { onTap?() }
+    /// mouse-up, so `heldFor` is the full press duration). If the window moved it
+    /// was a drag — no intent. Otherwise a stationary press is a TAP if released
+    /// quickly (→ onTap / pull-recap) or a LONG-PRESS if held past the threshold
+    /// (→ onLongPress / 5.2 recall). Either way, refresh the auto-release timeout
+    /// from the end of the interaction.
+    func viewInteractionEnded(moved: Bool, heldFor duration: TimeInterval) {
+        if !moved {
+            if duration >= longPressThreshold { onLongPress?() } else { onTap?() }
+        }
         resetTimer()
     }
 

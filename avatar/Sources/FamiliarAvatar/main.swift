@@ -47,8 +47,9 @@ struct Options {
                   --locked            start engaged+locked (interactive, no auto-release)
                   --click-through     deprecated (pass-through is the default now)
                 Pass-through by default: clicks reach apps behind her. DOUBLE-CLICK her
-                body to engage; then DRAG to move, or single-CLICK her for a spoken
-                recap. She auto-releases ~4 s after you stop.
+                body to engage; then DRAG to move, quick-TAP her for a spoken recap, or
+                LONG-PRESS (~0.5 s) her for the "while you were away" rollup. She
+                auto-releases ~4 s after you stop.
                 Hotkeys (global keyboard monitor needs Accessibility permission):
                   ⌃⌥⌘P  lock/unlock engaged    ⌃⌥⌘Q  quit
                 """)
@@ -119,11 +120,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         engagement.start()
         if options.startLocked { engagement.toggleLock() }
 
-        // Touch / input channel (4.4): tapping her body while engaged emits an
-        // upstream intent on intent.sock. The overlay stays dumb — it sends a
-        // semantic "pull-recap" intent; the daemon decides (replays the recap aloud).
+        // Touch / input channel (4.4 + 5.2): a gesture on her body while engaged
+        // emits an upstream intent on intent.sock. The overlay stays dumb — it
+        // sends a semantic intent and the daemon decides what it does. Two gestures,
+        // two intents: a quick tap → "pull-recap" (replays the latest recap), a
+        // long-press → "recall" (the "while you were away" activity rollup).
         intentPublisher = IntentPublisher(path: options.intentSocketPath)
         engagement.onTap = { [weak self] in self?.intentPublisher.sendPullRecap() }
+        engagement.onLongPress = { [weak self] in self?.intentPublisher.sendRecall() }
 
         // Inner-thoughts display (4.3): a renderer-agnostic bubble floating above
         // her head that SHOWS the silent `thought` text but never speaks it.

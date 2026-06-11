@@ -34,20 +34,39 @@ final class OverlayWindow: NSWindow {
 final class DraggableMetalView: MTKView {
     weak var engagement: EngagementController?
 
+    // A stationary body-press awaiting its mouse-up. performDrag returns
+    // IMMEDIATELY when you don't drag (it only runs a modal loop once the window
+    // actually moves), so it can't time the hold — the button is still down when
+    // it returns and the real mouse-up arrives here separately. We stamp the press
+    // on mouse-down and classify tap-vs-long-press on mouse-up from the true hold.
+    private var pressStart: TimeInterval?
+
     override func mouseDown(with event: NSEvent) {
         guard let engagement else {
             window?.performDrag(with: event)
             return
         }
-        if engagement.viewMouseDown(event) {
-            // performDrag is synchronous (its own modal loop until mouse-up) and only
-            // moves the window if you actually dragged. Compare the origin before/after:
-            // unchanged → it was a tap, not a drag.
-            let before = window?.frame.origin ?? .zero
-            window?.performDrag(with: event)
-            let after = window?.frame.origin ?? .zero
-            let moved = hypot(after.x - before.x, after.y - before.y) > 3.0
-            engagement.viewInteractionEnded(moved: moved)
+        guard engagement.viewMouseDown(event) else { return }
+        let before = window?.frame.origin ?? .zero
+        let start = ProcessInfo.processInfo.systemUptime
+        window?.performDrag(with: event)
+        let after = window?.frame.origin ?? .zero
+        let moved = hypot(after.x - before.x, after.y - before.y) > 3.0
+        if moved {
+            // performDrag ran its modal loop and consumed the mouse-up → it was a
+            // drag; classify now. Duration is irrelevant for a drag.
+            pressStart = nil
+            engagement.viewInteractionEnded(moved: true, heldFor: 0)
+        } else {
+            // No drag: button still held, real mouse-up comes next. Defer to mouseUp.
+            pressStart = start
         }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard let start = pressStart else { super.mouseUp(with: event); return }
+        pressStart = nil
+        let held = ProcessInfo.processInfo.systemUptime - start
+        engagement?.viewInteractionEnded(moved: false, heldFor: held)
     }
 }
