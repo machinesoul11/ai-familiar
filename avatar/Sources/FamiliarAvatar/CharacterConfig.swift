@@ -30,10 +30,18 @@ struct CharacterConfig: Decodable {
         // entry file. Cubism resolves its own textures/motions/physics from there.
         let model: String?
     }
+    /// One semantic token's reaction. Each renderer reads its own fields:
+    ///  - Spine: `animation` (+ `loop`/`fallback`).
+    ///  - Live2D: `expression` (the persistent mood, a model3.json Expression
+    ///    `Name`) and/or `motion` (a one-shot gesture, a model3.json Motions
+    ///    group). A renderer ignores the other's fields — one schema, no
+    ///    renderer-tagged union until a third renderer needs it.
     struct State: Decodable {
-        let animation: String
+        let animation: String?
         let loop: Bool?
         let fallback: String?
+        let expression: String?
+        let motion: String?
     }
 
     let id: String?
@@ -43,6 +51,11 @@ struct CharacterConfig: Decodable {
     /// mode, drag, hotkeys, socket) is renderer-agnostic.
     let renderer: String?
     let scale: Double?
+    /// Live2D placement: shift the model in the projection (normalized device
+    /// coords, +y up). Absent ⇒ 0 (the renderer's centered fit). Spine uses its
+    /// own bounds-fit and ignores these.
+    let offsetX: Double?
+    let offsetY: Double?
     let defaultAnimation: String?
     let assets: Assets
     let states: [String: State]

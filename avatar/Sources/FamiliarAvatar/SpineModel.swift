@@ -73,12 +73,12 @@ final class SpineModel: AvatarModel {
     }
 
     private func play(_ stateKey: String) {
-        guard let state = config.states[stateKey] else { return } // unknown token: ignore
+        guard let state = config.states[stateKey], let animation = state.animation else { return } // unknown/animation-less token: ignore
         let loop = state.loop ?? true
         // De-dup only looping states so a resent phase doesn't restart/jitter the
         // loop; one-shots (a wave, an alert flash) re-trigger on every command.
         if loop && stateKey == lastStateKey { return }
-        spine_play(handle, state.animation, loop, state.fallback)
+        spine_play(handle, animation, loop, state.fallback)
         lastStateKey = stateKey
     }
 }

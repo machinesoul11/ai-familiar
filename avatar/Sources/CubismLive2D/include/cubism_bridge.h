@@ -12,8 +12,9 @@
  * (e.g. id<MTLDevice>, id<MTLCommandBuffer>, MTLRenderPassDescriptor*). The
  * caller must keep them alive for the duration of the call.
  *
- * Step-0 spike surface only: enough to load a model and draw it. Expressions,
- * the token map, and overlay integration come in later chunks.
+ * Step 2 grows the surface past load/update/draw with the reaction primitives
+ * the token map drives — set an expression, fire a gesture motion — plus a
+ * placement call for config-driven scale/offset of the projection.
  */
 #ifndef cubism_bridge_h
 #define cubism_bridge_h
@@ -57,6 +58,28 @@ void cubism_model_draw(CubismModelHandle *model, const void *commandBuffer,
 
 /* Number of canvas-space units (for placement); fills a 2-float array {w,h}. */
 void cubism_model_canvas_size(CubismModelHandle *model, float *outWidthHeight2);
+
+/*
+ * Start an authored expression by its model3.json `Name` (the persistent mood
+ * layer — overlays additively on top of the base motion until replaced). All
+ * expressions are preloaded at model-create; an unknown name is ignored.
+ */
+void cubism_model_set_expression(CubismModelHandle *model, const char *name);
+
+/*
+ * Fire a one-shot gesture motion. `group` is a model3.json Motions group name
+ * (e.g. "TapBody"); `index` selects within the group (clamped/ignored if out of
+ * range). Plays at a higher priority than the looping idle, then idle resumes.
+ */
+void cubism_model_start_motion(CubismModelHandle *model, const char *group, int index);
+
+/*
+ * Config-driven placement of the model in the (aspect-corrected) projection:
+ * `scale` multiplies the fit, `xOffset`/`yOffset` shift it in normalized device
+ * coords (+y up). Defaults (1, 0, 0) reproduce Step-1's centered fit.
+ */
+void cubism_model_set_placement(CubismModelHandle *model, float scale,
+                                float xOffset, float yOffset);
 
 void cubism_model_destroy(CubismModelHandle *model);
 

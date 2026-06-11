@@ -141,7 +141,8 @@ func writePNG(_ texture: MTLTexture, to path: String) {
     FileHandle.standardError.write(Data("[spike] wrote \(path)\n".utf8))
 }
 
-func runSnapshot(modelDir: String, modelJson: String, outPath: String, frames: Int, transparent: Bool = false) {
+func runSnapshot(modelDir: String, modelJson: String, outPath: String, frames: Int,
+                 transparent: Bool = false, expression: String? = nil, motion: String? = nil) {
     guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else {
         FileHandle.standardError.write(Data("[spike] no metal device\n".utf8)); exit(1)
     }
@@ -152,6 +153,11 @@ func runSnapshot(modelDir: String, modelJson: String, outPath: String, frames: I
     let model = modelDir.withCString { d in modelJson.withCString { j in
         cubism_model_create(d, j, devPtr, Int32(w), Int32(h)) } }
     guard let model else { FileHandle.standardError.write(Data("[spike] load failed\n".utf8)); exit(1) }
+
+    // Step-2 self-verification: drive an expression / motion so the snapshot
+    // shows the reaction (lets Claude inspect each F0x face via Read).
+    if let expression { expression.withCString { cubism_model_set_expression(model, $0) } }
+    if let motion { motion.withCString { cubism_model_start_motion(model, $0, 0) } }
 
     let colorDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: w, height: h, mipmapped: false)
     colorDesc.usage = [.renderTarget, .shaderRead]
@@ -238,8 +244,16 @@ if let snapIdx = CommandLine.arguments.firstIndex(of: "--snapshot") {
         frames = n
     }
     let transparent = CommandLine.arguments.contains("--transparent")
+    func argValue(_ flag: String) -> String? {
+        guard let i = CommandLine.arguments.firstIndex(of: flag),
+              CommandLine.arguments.indices.contains(i + 1) else { return nil }
+        return CommandLine.arguments[i + 1]
+    }
+    let expression = argValue("--expression")
+    let motion = argValue("--motion")
     let (mDir, mJson) = resolveModel()
-    runSnapshot(modelDir: mDir, modelJson: mJson, outPath: outPath, frames: frames, transparent: transparent)
+    runSnapshot(modelDir: mDir, modelJson: mJson, outPath: outPath, frames: frames,
+                transparent: transparent, expression: expression, motion: motion)
 }
 
 let app = NSApplication.shared

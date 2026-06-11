@@ -9,11 +9,18 @@ import CubismLive2D
 /// framework drives all the Metal work inside `draw`. `MetalCubismRenderer`
 /// hands it the per-frame command buffer + render pass.
 ///
-/// Step 1 is render-only: the model plays its authored idle motion + physics +
-/// breath, and `apply` is a deliberate no-op — the token → expression/motion map
-/// is Step 2.
+/// The token → expression/motion decision lives in the **config** `states`
+/// (data), exactly like `SpineModel` — Live2D states carry an `expression` (the
+/// persistent mood layer) and/or a `motion` (a one-shot gesture group). The
+/// model also runs an autonomous idle motion + breath + eye-blink underneath.
 final class Live2DModel: AvatarModel {
     private let handle: OpaquePointer
+    private let config: CharacterConfig
+
+    /// The expression currently set, so a resent phase doesn't restart it (a
+    /// motion gesture, by contrast, re-fires on every command — like Spine's
+    /// non-looping states).
+    private var lastExpression: String = ""
 
     /// - Parameters:
     ///   - viewW/viewH: initial drawable size, used to size the Cubism mask
@@ -39,6 +46,13 @@ final class Live2DModel: AvatarModel {
             return nil
         }
         handle = h
+        config = character.config
+
+        // Config-driven placement (defaults reproduce the centered Step-1 fit).
+        cubism_model_set_placement(h,
+                                   Float(character.config.scale ?? 1.0),
+                                   Float(character.config.offsetX ?? 0.0),
+                                   Float(character.config.offsetY ?? 0.0))
     }
 
     deinit {
@@ -55,10 +69,31 @@ final class Live2DModel: AvatarModel {
         cubism_model_draw(handle, commandBuffer, renderPass, width, height)
     }
 
-    // MARK: - AvatarModel
+    // MARK: - Semantic token -> config state (parallels SpineModel.apply)
 
     func apply(_ command: AvatarCommand) {
-        // Token → expression/motion mapping is Phase 4.5b Step 2. Step 1 renders
-        // the idle/breath/physics loop only, so incoming commands are ignored.
+        switch command {
+        case let .state(phase, ready):
+            // The attention beacon takes precedence over the activity phase on the
+            // single mood layer; combining them is a 4.2c wiring policy decision.
+            play(ready ? "ready" : phase)
+        case let .expression(mood):
+            play(mood)
+        case .thought:
+            break // inner-thought DISPLAY is Phase 4.3; the overlay ignores it here
+        }
+    }
+
+    private func play(_ stateKey: String) {
+        guard let state = config.states[stateKey] else { return } // unknown token: ignore
+
+        if let expression = state.expression, expression != lastExpression {
+            expression.withCString { cubism_model_set_expression(handle, $0) }
+            lastExpression = expression
+        }
+        // Gestures re-fire on every matching command (one-shots, like Spine).
+        if let motion = state.motion {
+            motion.withCString { cubism_model_start_motion(handle, $0, 0) }
+        }
     }
 }

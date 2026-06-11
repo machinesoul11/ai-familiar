@@ -2,11 +2,14 @@
  * cubism_bridge.mm — implementation of the pure-C ABI over the Cubism SDK.
  *
  * Mirrors the structure of the SDK's Metal sample (LAppModel/LAppPal/
- * LAppAllocator) but stripped to what the Step-0 spike needs: framework
- * startup, model load (moc + textures + physics + pose + a looping idle
- * motion), a classic manual update, and driving CubismRenderer_Metal. The
- * sample's UIKit/scene coupling is removed — files load from absolute paths and
- * Swift owns the Metal surface.
+ * LAppAllocator) but stripped to what the overlay needs: framework startup,
+ * model load (moc + textures + physics + pose + a looping idle motion +
+ * expressions + eye-blink + breath), the LAppModel update layer order, and
+ * driving CubismRenderer_Metal. The sample's UIKit/scene coupling is removed —
+ * files load from absolute paths and Swift owns the Metal surface.
+ *
+ * Step 2 adds the reaction surface the token map drives — set an expression,
+ * fire a gesture motion — plus eye-blink/breath aliveness and config placement.
  *
  * Compiled with ARC disabled (see Package.swift) to match the framework's Metal
  * renderer; Metal objects are retained/released manually.
@@ -21,18 +24,26 @@
 #include "cubism_bridge.h"
 
 #include <CubismFramework.hpp>
+#include <CubismDefaultParameterId.hpp>
 #include <CubismModelSettingJson.hpp>
 #include <ICubismModelSetting.hpp>
+#include <Id/CubismIdManager.hpp>
 #include <Model/CubismUserModel.hpp>
 #include <Motion/CubismMotion.hpp>
+#include <Motion/ACubismMotion.hpp>
+#include <Effect/CubismEyeBlink.hpp>
+#include <Effect/CubismBreath.hpp>
 #include <Math/CubismMatrix44.hpp>
 #include <Math/CubismModelMatrix.hpp>
+#include <Type/csmMap.hpp>
+#include <Type/csmVector.hpp>
 #include <Rendering/Metal/CubismRenderer_Metal.hpp>
 #include <Rendering/Metal/CubismDeviceInfo_Metal.hpp>
 #include "framework/Rendering/Metal/CubismShaderInject.h"
 
 using namespace Live2D::Cubism::Framework;
 namespace Rendering = Live2D::Cubism::Framework::Rendering;
+namespace DefaultParam = Live2D::Cubism::Framework::DefaultParameterId;
 
 // ---------------------------------------------------------------------------
 // Shader-source injection (consumed by the patched CubismShader_Metal).
@@ -127,17 +138,25 @@ static void FreeFileBytes(Csm::csmByte *bytes) { free(bytes); }
 // The spike model: a minimal CubismUserModel subclass.
 // ---------------------------------------------------------------------------
 static const Csm::csmInt32 PriorityIdle = 1;
+static const Csm::csmInt32 PriorityNormal = 2;
 
 class BridgeModel : public Csm::CubismUserModel
 {
 public:
-    BridgeModel() : _setting(nullptr) {}
+    BridgeModel() : _setting(nullptr), _scale(1.0f), _offsetX(0.0f), _offsetY(0.0f) {}
 
     ~BridgeModel() override
     {
         if (_setting) { delete _setting; _setting = nullptr; }
         for (id<MTLTexture> t : _textures) { [t release]; }
         _textures.clear();
+        // Expressions are ACubismMotion* we own (loaded via LoadExpression).
+        for (Csm::csmMap<Csm::csmString, Csm::ACubismMotion *>::const_iterator it = _expressions.Begin();
+             it != _expressions.End(); ++it)
+        {
+            Csm::ACubismMotion::Delete(it->Second);
+        }
+        _expressions.Clear();
     }
 
     bool Load(const std::string &dir, const std::string &jsonFile,
@@ -161,13 +180,24 @@ public:
     void Update(Csm::csmFloat32 dt)
     {
         if (!_model) { return; }
+
+        // LAppModel's layer order: the base motion writes into a saved/restored
+        // parameter snapshot, then expression / eye-blink / breath layer
+        // additively on top, then physics + pose, then the model recomputes.
         _model->LoadParameters();
+        bool motionUpdated = false;
         if (_motionManager->IsFinished()) { StartIdle(); }
-        else { _motionManager->UpdateMotion(_model, dt); }
+        else { motionUpdated = _motionManager->UpdateMotion(_model, dt); }
         _model->SaveParameters();
 
-        // Expressions are a Step-2 concern (the token map); the spike just needs
-        // Haru to render and idle.
+        // Persistent mood layer (the token map's expressions).
+        if (_expressionManager) { _expressionManager->UpdateMotion(_model, dt); }
+
+        // Eye-blink only when a motion isn't already driving the eyes, so an
+        // authored gesture's eye keyframes win over the autonomous blink.
+        if (!motionUpdated && _eyeBlink) { _eyeBlink->UpdateParameters(_model, dt); }
+
+        if (_breath) { _breath->UpdateParameters(_model, dt); }
         if (_physics) { _physics->Evaluate(_model, dt); }
         if (_pose) { _pose->UpdateParameters(_model, dt); }
         _model->Update();
@@ -209,6 +239,10 @@ public:
         {
             projection.Scale((Csm::csmFloat32)viewH / (Csm::csmFloat32)viewW, 1.0f);
         }
+        // Config placement: scale the fit, then offset in NDC (+y up). Defaults
+        // (1, 0, 0) leave the centered Step-1 fit unchanged.
+        projection.ScaleRelative(_scale, _scale);
+        projection.TranslateRelative(_offsetX, _offsetY);
         if (_modelMatrix) { projection.MultiplyByMatrix(_modelMatrix); }
 
         renderer->SetMvpMatrix(&projection);
@@ -220,6 +254,41 @@ public:
         if (!out2) { return; }
         out2[0] = _model ? _model->GetCanvasWidth() : 1.0f;
         out2[1] = _model ? _model->GetCanvasHeight() : 1.0f;
+    }
+
+    // Start a preloaded expression by its model3.json Name. Unknown → ignored.
+    void SetExpression(const std::string &name)
+    {
+        if (!_expressionManager) { return; }
+        Csm::csmString key(name.c_str());
+        if (!_expressions.IsExist(key)) { return; }
+        Csm::ACubismMotion *motion = _expressions[key];
+        if (motion) { _expressionManager->StartMotion(motion, false); }
+    }
+
+    // Fire a one-shot gesture from a model3.json Motions group at `index`.
+    void StartMotionByGroup(const std::string &group, Csm::csmInt32 index)
+    {
+        if (!_setting) { return; }
+        Csm::csmInt32 count = _setting->GetMotionCount(group.c_str());
+        if (count == 0 || index < 0 || index >= count) { return; }
+
+        Csm::csmSizeInt size;
+        Csm::csmByte *buf = LoadFileBytes(_dir + _setting->GetMotionFileName(group.c_str(), index), &size);
+        if (!buf) { return; }
+        // Build a unique cache name so repeated taps don't collide.
+        std::string cacheName = group + "_" + std::to_string(index);
+        Csm::CubismMotion *motion = static_cast<Csm::CubismMotion *>(
+            LoadMotion(buf, size, cacheName.c_str(), nullptr, nullptr, _setting, group.c_str(), index));
+        FreeFileBytes(buf);
+        if (motion) { _motionManager->StartMotionPriority(motion, true, PriorityNormal); }
+    }
+
+    void SetPlacement(float scale, float offsetX, float offsetY)
+    {
+        _scale = scale;
+        _offsetX = offsetX;
+        _offsetY = offsetY;
     }
 
 private:
@@ -248,6 +317,14 @@ private:
             if (buf) { LoadPose(buf, size); FreeFileBytes(buf); }
         }
 
+        // Expressions (the persistent mood layer the token map drives).
+        SetupExpressions();
+
+        // Autonomous aliveness: blink from the model3 EyeBlink group, breath on
+        // the standard angle/breath parameters (LAppModel's values).
+        SetupEyeBlink();
+        SetupBreath();
+
         // Layout
         Csm::csmMap<Csm::csmString, Csm::csmFloat32> layout;
         _setting->GetLayoutMap(layout);
@@ -255,6 +332,49 @@ private:
 
         _model->SaveParameters();
         return true;
+    }
+
+    void SetupExpressions()
+    {
+        Csm::csmInt32 count = _setting->GetExpressionCount();
+        for (Csm::csmInt32 i = 0; i < count; ++i)
+        {
+            const Csm::csmChar *name = _setting->GetExpressionName(i);
+            const Csm::csmChar *file = _setting->GetExpressionFileName(i);
+            if (strcmp(file, "") == 0) { continue; }
+
+            Csm::csmSizeInt size;
+            Csm::csmByte *buf = LoadFileBytes(_dir + file, &size);
+            if (!buf) { continue; }
+            Csm::ACubismMotion *motion = LoadExpression(buf, size, name);
+            FreeFileBytes(buf);
+            if (!motion) { continue; }
+
+            Csm::csmString key(name);
+            if (_expressions.IsExist(key)) { Csm::ACubismMotion::Delete(_expressions[key]); }
+            _expressions[key] = motion;
+        }
+    }
+
+    void SetupEyeBlink()
+    {
+        if (_setting->GetEyeBlinkParameterCount() > 0)
+        {
+            _eyeBlink = Csm::CubismEyeBlink::Create(_setting);
+        }
+    }
+
+    void SetupBreath()
+    {
+        _breath = Csm::CubismBreath::Create();
+        Csm::CubismIdManager *ids = Csm::CubismFramework::GetIdManager();
+        Csm::csmVector<Csm::CubismBreath::BreathParameterData> params;
+        params.PushBack(Csm::CubismBreath::BreathParameterData(ids->GetId(DefaultParam::ParamAngleX),     0.0f, 15.0f, 6.5345f, 0.5f));
+        params.PushBack(Csm::CubismBreath::BreathParameterData(ids->GetId(DefaultParam::ParamAngleY),     0.0f,  8.0f, 3.5345f, 0.5f));
+        params.PushBack(Csm::CubismBreath::BreathParameterData(ids->GetId(DefaultParam::ParamAngleZ),     0.0f, 10.0f, 5.5345f, 0.5f));
+        params.PushBack(Csm::CubismBreath::BreathParameterData(ids->GetId(DefaultParam::ParamBodyAngleX), 0.0f,  4.0f, 15.5345f, 0.5f));
+        params.PushBack(Csm::CubismBreath::BreathParameterData(ids->GetId(DefaultParam::ParamBreath),     0.5f,  0.5f, 3.2345f, 0.5f));
+        _breath->SetParameters(params);
     }
 
     void SetupTextures(id<MTLDevice> device)
@@ -302,6 +422,10 @@ private:
     Csm::ICubismModelSetting *_setting;
     std::string _dir;
     std::vector<id<MTLTexture>> _textures;
+    Csm::csmMap<Csm::csmString, Csm::ACubismMotion *> _expressions;
+    Csm::csmFloat32 _scale;
+    Csm::csmFloat32 _offsetX;
+    Csm::csmFloat32 _offsetY;
 };
 
 // ---------------------------------------------------------------------------
@@ -337,6 +461,22 @@ extern "C" void cubism_model_draw(CubismModelHandle *model, const void *commandB
 extern "C" void cubism_model_canvas_size(CubismModelHandle *model, float *outWidthHeight2)
 {
     if (model) { reinterpret_cast<BridgeModel *>(model)->CanvasSize(outWidthHeight2); }
+}
+
+extern "C" void cubism_model_set_expression(CubismModelHandle *model, const char *name)
+{
+    if (model && name) { reinterpret_cast<BridgeModel *>(model)->SetExpression(name); }
+}
+
+extern "C" void cubism_model_start_motion(CubismModelHandle *model, const char *group, int index)
+{
+    if (model && group) { reinterpret_cast<BridgeModel *>(model)->StartMotionByGroup(group, index); }
+}
+
+extern "C" void cubism_model_set_placement(CubismModelHandle *model, float scale,
+                                           float xOffset, float yOffset)
+{
+    if (model) { reinterpret_cast<BridgeModel *>(model)->SetPlacement(scale, xOffset, yOffset); }
 }
 
 extern "C" void cubism_model_destroy(CubismModelHandle *model)
