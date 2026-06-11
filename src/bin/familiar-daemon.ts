@@ -14,6 +14,10 @@ import { createAvatarPublishSocket } from '../avatarPublishSocket.js';
 import { createAvatarBackend } from '../avatarBackend.js';
 import { createAvatarChannel } from '../avatarChannel.js';
 import { createAvatarSubscriber } from '../avatarSubscriber.js';
+import {
+  createAvatarThoughtDecisionSink,
+  createAvatarThoughtRecapEmitter,
+} from '../avatarThoughtDelivery.js';
 
 const SOCKET_NAME = 'daemon.sock';
 const PIDFILE_NAME = 'daemon.pid';
@@ -78,9 +82,22 @@ async function serveDaemon(): Promise<void> {
   const avatarPublish = createAvatarPublishSocket();
   const avatarChannel = createAvatarChannel(createAvatarBackend(avatarPublish.sink));
 
+  // Inner-thoughts emit (4.3b): the same text the daemon speaks is also shown as a thought
+  // bubble above Haru, by re-projecting the frozen recap/needs-you text onto the avatar channel.
+  // The avatar STATE lane (createAvatarSubscriber) is untouched: state drives her face, thought
+  // drives her bubble. Two NDJSON frames per event, both rendered by the Slice A overlay.
+  const avatarThoughtRecap = createAvatarThoughtRecapEmitter(avatarChannel);
+
   const daemon = createDaemon({
     sink: createEventSink([
-      createRoutingSubscriber({ sinks: [consoleDecisionSink(), ledger.sink, delivery.decisionSink] }),
+      createRoutingSubscriber({
+        sinks: [
+          consoleDecisionSink(),
+          ledger.sink,
+          delivery.decisionSink,
+          createAvatarThoughtDecisionSink(avatarChannel),
+        ],
+      }),
       createAvatarSubscriber(avatarChannel),
       createArchRecapSubscriber({
         ...createArchRecapDeps(stateRoot),
@@ -92,6 +109,7 @@ async function serveDaemon(): Promise<void> {
           }
 
           delivery.deliverRecap(summary, finalMessage);
+          avatarThoughtRecap(summary, finalMessage);
         },
       }),
     ]),
