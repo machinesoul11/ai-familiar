@@ -40,8 +40,14 @@ final class DraggableMetalView: MTKView {
             return
         }
         if engagement.viewMouseDown(event) {
-            window?.performDrag(with: event)   // synchronous: runs its own drag loop
-            engagement.viewInteractionEnded()
+            // performDrag is synchronous (its own modal loop until mouse-up) and only
+            // moves the window if you actually dragged. Compare the origin before/after:
+            // unchanged → it was a tap, not a drag.
+            let before = window?.frame.origin ?? .zero
+            window?.performDrag(with: event)
+            let after = window?.frame.origin ?? .zero
+            let moved = hypot(after.x - before.x, after.y - before.y) > 3.0
+            engagement.viewInteractionEnded(moved: moved)
         }
     }
 }

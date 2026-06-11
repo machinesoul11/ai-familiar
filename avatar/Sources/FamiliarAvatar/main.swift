@@ -6,6 +6,7 @@ import Foundation
 // no arguments; the harness/daemon flags are for by-eye driving.
 struct Options {
     var socketPath: String
+    var intentSocketPath: String
     var monitorIndex: Int
     var startLocked: Bool
     var windowSize: CGFloat
@@ -17,6 +18,7 @@ struct Options {
             ?? (NSHomeDirectory() as NSString).appendingPathComponent(".familiar")
         var opts = Options(
             socketPath: (home as NSString).appendingPathComponent("avatar.sock"),
+            intentSocketPath: (home as NSString).appendingPathComponent("intent.sock"),
             monitorIndex: 1,          // monitor-2 default (dual-display setup)
             startLocked: false,
             windowSize: 360,
@@ -26,7 +28,8 @@ struct Options {
         while let arg = args.first {
             args.removeFirst()
             switch arg {
-            case "--socket":      if let v = args.first { opts.socketPath = v; args.removeFirst() }
+            case "--socket":        if let v = args.first { opts.socketPath = v; args.removeFirst() }
+            case "--intent-socket": if let v = args.first { opts.intentSocketPath = v; args.removeFirst() }
             case "--monitor":     if let v = args.first, let n = Int(v) { opts.monitorIndex = n; args.removeFirst() }
             case "--size":        if let v = args.first, let n = Double(v) { opts.windowSize = CGFloat(n); args.removeFirst() }
             case "--character":   if let v = args.first { opts.characterDir = v; args.removeFirst() }
@@ -36,6 +39,7 @@ struct Options {
                 print("""
                 FamiliarAvatar — native desk-pet overlay (subscribes to avatar.sock)
                   --socket <path>     Unix socket to subscribe to (default $FAMILIAR_HOME/avatar.sock)
+                  --intent-socket <p> upstream intent socket to write to (default $FAMILIAR_HOME/intent.sock)
                   --monitor <n>       0-based display index (default 1 = monitor-2)
                   --size <points>     square window edge (default 360)
                   --character <dir>   character pack folder (a *.config.json + assets);
@@ -43,7 +47,8 @@ struct Options {
                   --locked            start engaged+locked (interactive, no auto-release)
                   --click-through     deprecated (pass-through is the default now)
                 Pass-through by default: clicks reach apps behind her. DOUBLE-CLICK her
-                body to engage (drag to move); she auto-releases ~4 s after you stop.
+                body to engage; then DRAG to move, or single-CLICK her for a spoken
+                recap. She auto-releases ~4 s after you stop.
                 Hotkeys (global keyboard monitor needs Accessibility permission):
                   ⌃⌥⌘P  lock/unlock engaged    ⌃⌥⌘Q  quit
                 """)
@@ -65,6 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var monitors: [Any] = []
     private var engagement: EngagementController!
     private var thoughtBubble: ThoughtBubbleController!
+    private var intentPublisher: IntentPublisher!
 
     init(options: Options) {
         self.options = options
@@ -112,6 +118,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         engagement.start()
         if options.startLocked { engagement.toggleLock() }
+
+        // Touch / input channel (4.4): tapping her body while engaged emits an
+        // upstream intent on intent.sock. The overlay stays dumb — it sends a
+        // semantic "pull-recap" intent; the daemon decides (replays the recap aloud).
+        intentPublisher = IntentPublisher(path: options.intentSocketPath)
+        engagement.onTap = { [weak self] in self?.intentPublisher.sendPullRecap() }
 
         // Inner-thoughts display (4.3): a renderer-agnostic bubble floating above
         // her head that SHOWS the silent `thought` text but never speaks it.

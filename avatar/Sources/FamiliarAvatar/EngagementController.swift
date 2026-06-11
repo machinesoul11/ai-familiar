@@ -35,6 +35,11 @@ final class EngagementController {
     private var globalMonitor: Any?
     private let highlight = CAShapeLayer()
 
+    /// Fired when she is engaged and you click her body WITHOUT dragging (a tap).
+    /// The 4.4 touch channel injects the upstream "pull-recap" intent here. The
+    /// controller stays renderer-agnostic — it only knows "tapped", not what it means.
+    var onTap: (() -> Void)?
+
     init(window: OverlayWindow,
          view: DraggableMetalView,
          timeout: TimeInterval = 4.0,
@@ -141,9 +146,14 @@ final class EngagementController {
         return true
     }
 
-    /// Called after a drag completes (performDrag runs its own loop), to refresh
-    /// the auto-release timeout from the end of the interaction.
-    func viewInteractionEnded() { resetTimer() }
+    /// Called after a body press completes (performDrag runs its own loop until
+    /// mouse-up). If the window did not move, the press was a TAP — fire onTap (the
+    /// 4.4 pull-recap intent). Either way, refresh the auto-release timeout from the
+    /// end of the interaction.
+    func viewInteractionEnded(moved: Bool) {
+        if !moved { onTap?() }
+        resetTimer()
+    }
 
     // MARK: - Hit region (ellipse inscribed in the inset box, screen coords)
 

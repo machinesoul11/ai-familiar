@@ -9,7 +9,11 @@ import { createDecisionLedger } from '../ledger.js';
 import { createArchRecapSubscriber } from '../archRecap.js';
 import { createArchRecapDeps } from '../archRecapDeps.js';
 import { createDelivery } from '../delivery.js';
-import { writeSnapshotFile } from '../recapSnapshotStore.js';
+import { writeSnapshotFile, readSnapshotFile } from '../recapSnapshotStore.js';
+import { parseSnapshot } from '../recapSnapshot.js';
+import { createPullRecap } from '../pullRecap.js';
+import { createAvatarIntentHandler } from '../avatarIntent.js';
+import { createAvatarIntentSocket } from '../avatarIntentSocket.js';
 import { createAvatarPublishSocket } from '../avatarPublishSocket.js';
 import { createAvatarBackend } from '../avatarBackend.js';
 import { createAvatarChannel } from '../avatarChannel.js';
@@ -88,6 +92,20 @@ async function serveDaemon(): Promise<void> {
   // drives her bubble. Two NDJSON frames per event, both rendered by the Slice A overlay.
   const avatarThoughtRecap = createAvatarThoughtRecapEmitter(avatarChannel);
 
+  // Touch / input channel (4.4): the first UPSTREAM avatar lane (overlay -> daemon).
+  // The overlay emits semantic intents on intent.sock; the daemon decides. v0: a
+  // tap maps to 'pull-recap', which replays the latest landed recap FULLER by reusing
+  // the 3.4d pull brain in-process over the persisted snapshot + the same audio stack
+  // delivery already uses (no second TTS backend, no subprocess). emit is omitted: the
+  // daemon's output is the spoken line, not stdout.
+  const pullRecap = createPullRecap({
+    loadSnapshot: () => parseSnapshot(readSnapshotFile(stateRoot)),
+    dispatch: delivery.dispatch,
+  });
+  const intentSocket = createAvatarIntentSocket({
+    onIntent: createAvatarIntentHandler({ pullRecap }),
+  });
+
   const daemon = createDaemon({
     sink: createEventSink([
       createRoutingSubscriber({
@@ -133,6 +151,14 @@ async function serveDaemon(): Promise<void> {
     // Avatar overlay is optional; the daemon keeps running without it.
   }
 
+  // Start the upstream intent socket. Like the publish socket, a failed intent
+  // socket must NEVER stop the daemon — degrade to "no touch input".
+  try {
+    await intentSocket.start();
+  } catch {
+    // Touch input is optional; the daemon keeps running without it.
+  }
+
   // Coordinate the avatar socket's shutdown with termination. The daemon's own LocalDaemon
   // registers SIGTERM/SIGINT -> stop() -> process.exit(0); daemon.ts is frozen, so the entrypoint
   // closes the avatar socket separately, best-effort. On a hard kill where process.exit wins the
@@ -140,6 +166,9 @@ async function serveDaemon(): Promise<void> {
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     process.on(signal, () => {
       void avatarPublish.stop().catch(() => {
+        // Best-effort: a failed close still leaves a self-healing stale socket.
+      });
+      void intentSocket.stop().catch(() => {
         // Best-effort: a failed close still leaves a self-healing stale socket.
       });
     });
