@@ -20,6 +20,7 @@ export interface DecisionLedger {
   readonly sink: DecisionSink;
   flush(): Promise<void>;
   recent(limit?: number): LedgerRow[];
+  bySession(sessionId: string): LedgerRow[];
   close(): Promise<void>;
 }
 
@@ -209,6 +210,17 @@ export function createDecisionLedger(opts: {
     return rows.map((row) => mapLedgerRow(row as DbDecisionRow));
   };
 
+  const bySession = (sessionId: string): LedgerRow[] => {
+    const rows = db.prepare(`
+      SELECT id, ts, hook, session_id, kind, channel, reason
+      FROM decisions
+      WHERE session_id = ?
+      ORDER BY id ASC
+    `).all(sessionId);
+
+    return rows.map((row) => mapLedgerRow(row as DbDecisionRow));
+  };
+
   const close = async (): Promise<void> => {
     await flush();
     db.close();
@@ -218,6 +230,7 @@ export function createDecisionLedger(opts: {
     sink,
     flush,
     recent,
+    bySession,
     close,
   };
 }

@@ -1,8 +1,10 @@
 export type AvatarIntent =
-  | { kind: 'avatar-intent'; intent: 'pull-recap' };
+  | { kind: 'avatar-intent'; intent: 'pull-recap' }
+  | { kind: 'avatar-intent'; intent: 'recall' };
 
 export interface AvatarIntentActions {
   pullRecap: () => void;
+  recall: () => void;
 }
 
 export function parseIntent(raw: string): AvatarIntent | null {
@@ -17,11 +19,15 @@ export function parseIntent(raw: string): AvatarIntent | null {
     return null;
   }
 
-  if (parsed.intent !== 'pull-recap') {
-    return null;
+  if (parsed.intent === 'pull-recap') {
+    return { kind: 'avatar-intent', intent: 'pull-recap' };
   }
 
-  return { kind: 'avatar-intent', intent: 'pull-recap' };
+  if (parsed.intent === 'recall') {
+    return { kind: 'avatar-intent', intent: 'recall' };
+  }
+
+  return null;
 }
 
 export function createAvatarIntentHandler(
@@ -31,6 +37,9 @@ export function createAvatarIntentHandler(
     switch (intent.intent) {
       case 'pull-recap':
         actions.pullRecap();
+        return;
+      case 'recall':
+        actions.recall();
         return;
     }
   };

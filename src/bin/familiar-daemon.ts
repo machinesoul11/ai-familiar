@@ -12,6 +12,7 @@ import { createDelivery } from '../delivery.js';
 import { writeSnapshotFile, readSnapshotFile } from '../recapSnapshotStore.js';
 import { parseSnapshot } from '../recapSnapshot.js';
 import { createPullRecap } from '../pullRecap.js';
+import { createRecall } from '../recall.js';
 import { createAvatarIntentHandler } from '../avatarIntent.js';
 import { createAvatarIntentSocket } from '../avatarIntentSocket.js';
 import { createAvatarPublishSocket } from '../avatarPublishSocket.js';
@@ -107,8 +108,16 @@ async function serveDaemon(): Promise<void> {
     // shows exactly what she says — same single message the brain dispatched.
     onSpoken: (message) => avatarChannel.deliver({ kind: 'avatar-thought', text: message.text }),
   });
+  const recall = createRecall({
+    loadRows: () => {
+      const newest = ledger.recent(1)[0];
+      return newest ? ledger.bySession(newest.sessionId) : [];
+    },
+    dispatch: delivery.dispatch,
+    onSpoken: (message) => avatarChannel.deliver({ kind: 'avatar-thought', text: message.text }),
+  });
   const intentSocket = createAvatarIntentSocket({
-    onIntent: createAvatarIntentHandler({ pullRecap }),
+    onIntent: createAvatarIntentHandler({ pullRecap, recall }),
   });
 
   const daemon = createDaemon({
