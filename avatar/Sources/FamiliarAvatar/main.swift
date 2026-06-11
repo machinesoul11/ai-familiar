@@ -11,6 +11,7 @@ struct Options {
     var startLocked: Bool
     var windowSize: CGFloat
     var characterDir: String?
+    var wakeWord: String?
 
     static func parse() -> Options {
         let env = ProcessInfo.processInfo.environment
@@ -22,7 +23,8 @@ struct Options {
             monitorIndex: 1,          // monitor-2 default (dual-display setup)
             startLocked: false,
             windowSize: 360,
-            characterDir: nil
+            characterDir: nil,
+            wakeWord: nil
         )
         var args = Array(CommandLine.arguments.dropFirst())
         while let arg = args.first {
@@ -33,6 +35,7 @@ struct Options {
             case "--monitor":     if let v = args.first, let n = Int(v) { opts.monitorIndex = n; args.removeFirst() }
             case "--size":        if let v = args.first, let n = Double(v) { opts.windowSize = CGFloat(n); args.removeFirst() }
             case "--character":   if let v = args.first { opts.characterDir = v; args.removeFirst() }
+            case "--wake-word":   if let v = args.first { opts.wakeWord = v; args.removeFirst() }
             case "--locked":        opts.startLocked = true
             case "--click-through": break   // deprecated: pass-through is now the default
             case "--help", "-h":
@@ -44,12 +47,17 @@ struct Options {
                   --size <points>     square window edge (default 360)
                   --character <dir>   character pack folder (a *.config.json + assets);
                                       else $FAMILIAR_HOME/character/, else bundled spineboy
+                  --wake-word <word>  5.4 STT (default OFF): listen for this spoken word, then
+                                      send the command after it as a voice intent. REQUIRES the
+                                      signed FamiliarAvatar.app (mic/speech TCC) — ignored when
+                                      run as a bare CLI. e.g. --wake-word haru
                   --locked            start engaged+locked (interactive, no auto-release)
                   --click-through     deprecated (pass-through is the default now)
                 Pass-through by default: clicks reach apps behind her. DOUBLE-CLICK her
                 body to engage; then DRAG to move, quick-TAP her for a spoken recap, or
                 LONG-PRESS (~0.5 s) her for the "while you were away" rollup. She
-                auto-releases ~4 s after you stop.
+                auto-releases ~4 s after you stop. With --wake-word you can also just
+                SAY "<wake> recap" or "<wake> what did I miss".
                 Hotkeys (global keyboard monitor needs Accessibility permission):
                   ⌃⌥⌘P  lock/unlock engaged    ⌃⌥⌘Q  quit
                 """)
@@ -72,6 +80,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var engagement: EngagementController!
     private var thoughtBubble: ThoughtBubbleController!
     private var intentPublisher: IntentPublisher!
+    private var speechListener: SpeechListener?
+    private var lastPullTapAt = Date.distantPast
 
     init(options: Options) {
         self.options = options
@@ -126,8 +136,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // two intents: a quick tap → "pull-recap" (replays the latest recap), a
         // long-press → "recall" (the "while you were away" activity rollup).
         intentPublisher = IntentPublisher(path: options.intentSocketPath)
-        engagement.onTap = { [weak self] in self?.intentPublisher.sendPullRecap() }
+        // Debounce taps: each tap replays the latest recap, so rapid taps used to
+        // queue a pile of them and play back-to-back (the "looping recaps"). Ignore
+        // taps within 1.5 s of the last.
+        engagement.onTap = { [weak self] in
+            guard let self else { return }
+            let now = Date()
+            guard now.timeIntervalSince(self.lastPullTapAt) > 1.5 else { return }
+            self.lastPullTapAt = now
+            self.intentPublisher.sendPullRecap()
+        }
         engagement.onLongPress = { [weak self] in self?.intentPublisher.sendRecall() }
+
+        // Voice talk-back (5.4 STT, default OFF): a spoken "<wake> recap" / "<wake>
+        // what did I miss" emits the SAME upstream intents as the gestures, through
+        // one more semantic intent ("utterance") the daemon classifies. The mic +
+        // on-device recognizer only work from a signed .app bundle (TCC reads the
+        // usage strings only there; a bare CLI hard-crashes), so we GATE on those
+        // strings being present and skip — never crash — otherwise.
+        if let wakeWord = options.wakeWord {
+            let info = Bundle.main.infoDictionary
+            let hasUsageStrings = (info?["NSSpeechRecognitionUsageDescription"] != nil)
+                && (info?["NSMicrophoneUsageDescription"] != nil)
+            if hasUsageStrings {
+                let listener = SpeechListener(wakeWord: wakeWord) { [weak self] command in
+                    self?.intentPublisher.sendUtterance(command)
+                }
+                listener.start()
+                speechListener = listener
+            } else {
+                FileHandle.standardError.write(Data("[avatar] voice: --wake-word \"\(wakeWord)\" ignored — STT needs the signed FamiliarAvatar.app (mic/speech usage strings); run from the bundle.\n".utf8))
+            }
+        }
 
         // Inner-thoughts display (4.3): a renderer-agnostic bubble floating above
         // her head that SHOWS the silent `thought` text but never speaks it.

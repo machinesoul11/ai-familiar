@@ -34,7 +34,9 @@ let package = Package(
                 .linkedFramework("Metal"),
                 .linkedFramework("MetalKit"),
                 .linkedFramework("QuartzCore"),
-                .linkedFramework("CoreGraphics")
+                .linkedFramework("CoreGraphics"),
+                .linkedFramework("Speech"),       // 5.4 STT: on-device SFSpeechRecognizer
+                .linkedFramework("AVFoundation")  // 5.4 STT: AVAudioEngine mic tap
             ]
         ),
 

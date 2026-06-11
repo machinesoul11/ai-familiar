@@ -34,6 +34,20 @@ final class IntentPublisher {
         emit(intent: "recall")
     }
 
+    /// Emit the "utterance" intent (5.4 STT) — free transcribed command text from
+    /// the SpeechListener. UNLIKE the fixed-vocabulary intents above, `text` is
+    /// user speech, so it MUST be JSON-escaped: we build the frame with
+    /// JSONSerialization rather than string interpolation (the daemon then
+    /// classifies the text into pull-recap / recall / nothing). A bad encode is a
+    /// silent no-op, like a down daemon.
+    func sendUtterance(_ text: String) {
+        let obj: [String: Any] = ["kind": "avatar-intent", "intent": "utterance", "text": text]
+        guard let data = try? JSONSerialization.data(withJSONObject: obj),
+              let json = String(data: data, encoding: .utf8) else { return }
+        let line = json + "\n"
+        queue.async { [weak self] in self?.connectWriteClose(line, intent: "utterance") }
+    }
+
     /// Encode one semantic intent as an NDJSON line and fire it upstream. The
     /// intent string is the ONLY thing that varies between gestures, drawn from a
     /// fixed trusted vocabulary (no user text → no JSON escaping needed).
