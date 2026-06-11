@@ -4,83 +4,91 @@ import type { AvatarIntent, AvatarIntentActions } from '../src/avatarIntent.js';
 
 describe('avatarIntent', () => {
   describe('parseIntent', () => {
-    it('1. valid frame parses', () => {
-      const raw = '{"kind":"avatar-intent","intent":"pull-recap"}';
+    // AC 1: {kind:'avatar-intent',intent:'utterance',text:'recap'} parses to exactly {kind:'avatar-intent',intent:'utterance',text:'recap'}.
+    it('1. parses utterance intent correctly', () => {
+      const raw = '{"kind":"avatar-intent","intent":"utterance","text":"recap"}';
       const result = parseIntent(raw);
-      expect(result).toEqual({ kind: 'avatar-intent', intent: 'pull-recap' });
+      expect(result).toEqual({ kind: 'avatar-intent', intent: 'utterance', text: 'recap' });
     });
 
-    it('2. separate calls return distinct objects', () => {
-      const raw = '{"kind":"avatar-intent","intent":"pull-recap"}';
-      const r1 = parseIntent(raw);
-      const r2 = parseIntent(raw);
-      expect(r1).not.toBe(r2);
-      expect(r1).toEqual(r2);
-      
-      // Mutating one shouldn't affect the other
-      if (r1) {
-        (r1 as any).intent = 'mutated';
-        expect(r2?.intent).toBe('pull-recap');
+    // AC 2: text preserved verbatim incl. case/whitespace: input text '  ReCap NOW ' round-trips unchanged (text === '  ReCap NOW ').
+    it('2. preserves text verbatim including case and whitespace', () => {
+      const raw = '{"kind":"avatar-intent","intent":"utterance","text":"  ReCap NOW "}';
+      const result = parseIntent(raw);
+      expect(result).toEqual({ kind: 'avatar-intent', intent: 'utterance', text: '  ReCap NOW ' });
+    });
+
+    // AC 3: text:'' (empty string) → valid, returns {kind:'avatar-intent',intent:'utterance',text:''} (NOT null).
+    it('3. accepts empty string as valid text', () => {
+      const raw = '{"kind":"avatar-intent","intent":"utterance","text":""}';
+      const result = parseIntent(raw);
+      expect(result).toEqual({ kind: 'avatar-intent', intent: 'utterance', text: '' });
+    });
+
+    // AC 4: utterance with MISSING text → null.
+    it('4. returns null if text is missing in utterance intent', () => {
+      const raw = '{"kind":"avatar-intent","intent":"utterance"}';
+      expect(parseIntent(raw)).toBeNull();
+    });
+
+    // AC 5: utterance with non-string text → null: one case each for number, boolean, null, object, array.
+    it('5. returns null if text is not a string', () => {
+      const cases = [
+        '{"kind":"avatar-intent","intent":"utterance","text":123}',
+        '{"kind":"avatar-intent","intent":"utterance","text":true}',
+        '{"kind":"avatar-intent","intent":"utterance","text":null}',
+        '{"kind":"avatar-intent","intent":"utterance","text":{}}',
+        '{"kind":"avatar-intent","intent":"utterance","text":[]}'
+      ];
+      for (const c of cases) {
+        expect(parseIntent(c)).toBeNull();
       }
     });
 
-    it('3. invalid JSON returns null', () => {
-      expect(parseIntent('not json')).toBeNull();
-      expect(parseIntent('{')).toBeNull();
-      expect(parseIntent('')).toBeNull();
+    // AC 6: utterance with extra fields → returned object has ONLY kind/intent/text; and is a fresh object.
+    it('6. strips extra fields and returns a fresh object', () => {
+      const raw = '{"kind":"avatar-intent","intent":"utterance","text":"hi","foo":1,"bar":true}';
+      const result = parseIntent(raw);
+      expect(result).toEqual({ kind: 'avatar-intent', intent: 'utterance', text: 'hi' });
+      if (result) {
+        expect(Object.keys(result).sort()).toEqual(['intent', 'kind', 'text']);
+      }
+
+      const result2 = parseIntent(raw);
+      expect(result).not.toBe(result2);
+      if (result && result2 && 'text' in result && 'text' in result2) {
+        result.text = 'mutated';
+        expect(result2.text).toBe('hi');
+      }
     });
 
-    it('4. valid JSON that is NOT a plain object returns null', () => {
+    // AC 7: Existing intents unchanged: 'pull-recap' → {kind:'avatar-intent',intent:'pull-recap'}; 'recall' → {kind:'avatar-intent',intent:'recall'}.
+    it('7. handles existing pull-recap and recall intents correctly', () => {
+      expect(parseIntent('{"kind":"avatar-intent","intent":"pull-recap"}')).toEqual({ kind: 'avatar-intent', intent: 'pull-recap' });
+      expect(parseIntent('{"kind":"avatar-intent","intent":"recall"}')).toEqual({ kind: 'avatar-intent', intent: 'recall' });
+    });
+
+    // AC 8: Unknown intent → null; non-object → null; missing kind → null; wrong kind → null; invalid JSON → null; whitespace-only → null; never throws.
+    it('8. handles invalid and unknown inputs gracefully', () => {
+      // Unknown intent
+      expect(parseIntent('{"kind":"avatar-intent","intent":"unknown"}')).toBeNull();
+      // Non-object
       expect(parseIntent('[]')).toBeNull();
       expect(parseIntent('null')).toBeNull();
       expect(parseIntent('"x"')).toBeNull();
       expect(parseIntent('5')).toBeNull();
       expect(parseIntent('true')).toBeNull();
-    });
-
-    it('5. plain object missing kind returns null', () => {
+      // Missing/Wrong kind
       expect(parseIntent('{"intent":"pull-recap"}')).toBeNull();
-    });
-
-    it('6. plain object with a wrong kind string returns null', () => {
-      expect(parseIntent('{"kind":"tap","intent":"pull-recap"}')).toBeNull();
-      expect(parseIntent('{"kind":"avatar-command","intent":"pull-recap"}')).toBeNull();
-    });
-
-    it('7. plain object whose kind is a non-string type returns null', () => {
-      expect(parseIntent('{"kind":123,"intent":"pull-recap"}')).toBeNull();
-      expect(parseIntent('{"kind":{},"intent":"pull-recap"}')).toBeNull();
-      expect(parseIntent('{"kind":[],"intent":"pull-recap"}')).toBeNull();
-    });
-
-    it('8. plain object with correct kind but missing intent returns null', () => {
-      expect(parseIntent('{"kind":"avatar-intent"}')).toBeNull();
-    });
-
-    it('9. plain object with correct kind but a non-string intent returns null', () => {
-      expect(parseIntent('{"kind":"avatar-intent","intent":123}')).toBeNull();
-      expect(parseIntent('{"kind":"avatar-intent","intent":{}}')).toBeNull();
-    });
-
-    it('10. plain object with correct kind but an unknown intent string returns null', () => {
-      expect(parseIntent('{"kind":"avatar-intent","intent":"frobnicate"}')).toBeNull();
-    });
-
-    it('11. plain object with correct kind + intent plus extra fields ignores extra fields', () => {
-      const raw = '{"kind":"avatar-intent","intent":"pull-recap","extra":1,"ts":"2026"}';
-      const result = parseIntent(raw);
-      expect(result).toEqual({ kind: 'avatar-intent', intent: 'pull-recap' });
-      if (result) {
-        expect(Object.keys(result).sort()).toEqual(['intent', 'kind']);
-      }
-    });
-
-    it('12. whitespace-only input returns null', () => {
+      expect(parseIntent('{"kind":"wrong","intent":"pull-recap"}')).toBeNull();
+      // Invalid JSON
+      expect(parseIntent('not json')).toBeNull();
+      expect(parseIntent('{')).toBeNull();
+      expect(parseIntent('')).toBeNull();
+      // Whitespace-only
       expect(parseIntent('   ')).toBeNull();
       expect(parseIntent('\n')).toBeNull();
-    });
-
-    it('13. totality: never throws for hostile strings', () => {
+      // Never throws
       const hostileStrings = [
         '{}garbage',
         '{"kind":"avatar-intent","intent":"pull-recap"}extra',
@@ -95,34 +103,76 @@ describe('avatarIntent', () => {
   });
 
   describe('createAvatarIntentHandler', () => {
-    it('14. returns a function', () => {
-      const actions: AvatarIntentActions = { pullRecap: vi.fn() };
+    // Helper to create all mocks
+    const createMocks = () => ({
+      pullRecap: vi.fn(),
+      recall: vi.fn(),
+      utterance: vi.fn()
+    });
+
+    // AC 17: {kind:'avatar-intent',intent:'utterance',text:'foo'} → calls actions.utterance exactly once with 'foo'; does NOT call pullRecap or recall.
+    it('17. calls utterance action with correct text', () => {
+      const actions = createMocks();
       const handler = createAvatarIntentHandler(actions);
+      const intent: AvatarIntent = { kind: 'avatar-intent', intent: 'utterance', text: 'foo' };
+      
+      handler(intent);
+      
+      expect(actions.utterance).toHaveBeenCalledTimes(1);
+      expect(actions.utterance).toHaveBeenCalledWith('foo');
+      expect(actions.pullRecap).not.toHaveBeenCalled();
+      expect(actions.recall).not.toHaveBeenCalled();
+    });
+
+    // AC 18: Existing routing unchanged: 'pull-recap' → actions.pullRecap() exactly once; 'recall' → actions.recall() exactly once.
+    it('18. routes pull-recap and recall correctly', () => {
+      const actions = createMocks();
+      const handler = createAvatarIntentHandler(actions);
+      
+      handler({ kind: 'avatar-intent', intent: 'pull-recap' });
+      expect(actions.pullRecap).toHaveBeenCalledTimes(1);
+      expect(actions.pullRecap).toHaveBeenCalledWith();
+      expect(actions.recall).not.toHaveBeenCalled();
+      expect(actions.utterance).not.toHaveBeenCalled();
+
+      actions.pullRecap.mockClear();
+      
+      handler({ kind: 'avatar-intent', intent: 'recall' });
+      expect(actions.recall).toHaveBeenCalledTimes(1);
+      expect(actions.recall).toHaveBeenCalledWith();
+      expect(actions.pullRecap).not.toHaveBeenCalled();
+      expect(actions.utterance).not.toHaveBeenCalled();
+    });
+
+    // AC 19: The handler forwards text raw — it does NOT transform/classify the text.
+    it('19. forwards utterance text verbatim', () => {
+      const actions = createMocks();
+      const handler = createAvatarIntentHandler(actions);
+      const rawText = 'WHAT DID I MISS';
+      
+      handler({ kind: 'avatar-intent', intent: 'utterance', text: rawText });
+      
+      expect(actions.utterance).toHaveBeenCalledWith(rawText);
+      // Ensure it wasn't called with 'recall' just because the text implies it
+      expect(actions.utterance).not.toHaveBeenCalledWith('recall');
+    });
+
+    // Sanity checks
+    it('sanity: returns a function', () => {
+      const handler = createAvatarIntentHandler(createMocks());
       expect(typeof handler).toBe('function');
     });
 
-    it('15. construction does not call action', () => {
-      const pullRecap = vi.fn();
-      const actions: AvatarIntentActions = { pullRecap };
+    it('sanity: construction does not call action', () => {
+      const actions = createMocks();
       createAvatarIntentHandler(actions);
-      expect(pullRecap).not.toHaveBeenCalled();
+      expect(actions.pullRecap).not.toHaveBeenCalled();
+      expect(actions.recall).not.toHaveBeenCalled();
+      expect(actions.utterance).not.toHaveBeenCalled();
     });
 
-    it('16. dispatch calls pullRecap exactly once with zero args', () => {
-      const pullRecap = vi.fn();
-      const actions: AvatarIntentActions = { pullRecap };
-      const handler = createAvatarIntentHandler(actions);
-      const intent: AvatarIntent = { kind: 'avatar-intent', intent: 'pull-recap' };
-      
-      handler(intent);
-      
-      expect(pullRecap).toHaveBeenCalledTimes(1);
-      expect(pullRecap).toHaveBeenCalledWith();
-    });
-
-    it('17. dispatching same intent 3 times calls action 3 times', () => {
-      const pullRecap = vi.fn();
-      const actions: AvatarIntentActions = { pullRecap };
+    it('sanity: dispatching same intent N times calls the action N times', () => {
+      const actions = createMocks();
       const handler = createAvatarIntentHandler(actions);
       const intent: AvatarIntent = { kind: 'avatar-intent', intent: 'pull-recap' };
       
@@ -130,25 +180,25 @@ describe('avatarIntent', () => {
       handler(intent);
       handler(intent);
       
-      expect(pullRecap).toHaveBeenCalledTimes(3);
+      expect(actions.pullRecap).toHaveBeenCalledTimes(3);
     });
 
-    it('18. separate handlers are independent', () => {
-      const pullRecapA = vi.fn();
-      const pullRecapB = vi.fn();
+    it('sanity: separate handlers are independent', () => {
+      const actionsA = createMocks();
+      const actionsB = createMocks();
       
-      const handlerA = createAvatarIntentHandler({ pullRecap: pullRecapA });
-      const handlerB = createAvatarIntentHandler({ pullRecap: pullRecapB });
+      const handlerA = createAvatarIntentHandler(actionsA);
+      const handlerB = createAvatarIntentHandler(actionsB);
       
       const intent: AvatarIntent = { kind: 'avatar-intent', intent: 'pull-recap' };
       
       handlerA(intent);
       
-      expect(pullRecapA).toHaveBeenCalledTimes(1);
-      expect(pullRecapB).not.toHaveBeenCalled();
+      expect(actionsA.pullRecap).toHaveBeenCalledTimes(1);
+      expect(actionsB.pullRecap).not.toHaveBeenCalled();
       
       handlerB(intent);
-      expect(pullRecapB).toHaveBeenCalledTimes(1);
+      expect(actionsB.pullRecap).toHaveBeenCalledTimes(1);
     });
   });
 });

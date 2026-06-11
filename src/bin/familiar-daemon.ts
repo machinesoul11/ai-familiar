@@ -14,6 +14,7 @@ import { parseSnapshot } from '../recapSnapshot.js';
 import { createPullRecap } from '../pullRecap.js';
 import { createRecall } from '../recall.js';
 import { createAvatarIntentHandler } from '../avatarIntent.js';
+import { classifyUtterance } from '../utterance.js';
 import { createAvatarIntentSocket } from '../avatarIntentSocket.js';
 import { createAvatarPublishSocket } from '../avatarPublishSocket.js';
 import { createAvatarBackend } from '../avatarBackend.js';
@@ -117,7 +118,22 @@ async function serveDaemon(): Promise<void> {
     onSpoken: (message) => avatarChannel.deliver({ kind: 'avatar-thought', text: message.text }),
   });
   const intentSocket = createAvatarIntentSocket({
-    onIntent: createAvatarIntentHandler({ pullRecap, recall }),
+    onIntent: createAvatarIntentHandler({
+      pullRecap,
+      recall,
+      utterance: (text) => {
+        switch (classifyUtterance(text)) {
+          case 'pull-recap':
+            pullRecap();
+            return;
+          case 'recall':
+            recall();
+            return;
+          default:
+            return;
+        }
+      },
+    }),
   });
 
   const daemon = createDaemon({
