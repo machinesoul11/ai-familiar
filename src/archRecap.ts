@@ -18,12 +18,13 @@ export interface ArchRecapDeps {
   writeRecap(text: string): void;
   defer(task: () => void): void;
   store?: Map<string, SessionBase>;
-  onRecap?(summary: ArchSummary, finalMessage: string | null): void;
+  onRecap?(summary: ArchSummary, finalMessage: string | null, subagentCount: number): void;
   readTranscript?(path: string): string | null;
 }
 
 export function createArchRecapSubscriber(deps: ArchRecapDeps): EventSubscriber {
   const store = deps.store ?? new Map<string, SessionBase>();
+  const subagentCounts = new Map<string, number>();
 
   return (event: NormalizedEvent) => {
     try {
@@ -48,8 +49,15 @@ export function createArchRecapSubscriber(deps: ArchRecapDeps): EventSubscriber 
         return;
       }
 
+      if (event.kind === 'subagent-finished') {
+        subagentCounts.set(event.sessionId, (subagentCounts.get(event.sessionId) ?? 0) + 1);
+        return;
+      }
+
       if (event.kind === 'run-finished') {
         const base = store.get(event.sessionId);
+        const subagentCount = subagentCounts.get(event.sessionId) ?? 0;
+        subagentCounts.set(event.sessionId, 0);
 
         if (base === undefined) {
           return;
@@ -67,7 +75,7 @@ export function createArchRecapSubscriber(deps: ArchRecapDeps): EventSubscriber 
           const summary = buildArchSummary({ files, contents, manifest });
           deps.writeRecap(formatArchRecap(summary));
           if (deps.onRecap !== undefined) {
-            deps.onRecap(summary, readFinalMessage(deps, event));
+            deps.onRecap(summary, readFinalMessage(deps, event), subagentCount);
           }
         });
         return;
@@ -75,6 +83,7 @@ export function createArchRecapSubscriber(deps: ArchRecapDeps): EventSubscriber 
 
       if (event.kind === 'session-end') {
         store.delete(event.sessionId);
+        subagentCounts.delete(event.sessionId);
       }
     } catch {
       return;

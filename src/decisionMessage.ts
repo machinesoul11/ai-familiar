@@ -3,6 +3,7 @@ import type { ChannelMessage, SpokenMessage } from './channel.js';
 
 export const NEEDS_PERMISSION_LINE = 'The agent needs your permission to continue.';
 export const NEEDS_INPUT_LINE = 'The agent is waiting for your input.';
+export const RUN_STARTED_LINE = 'The agent started working.';
 
 export function decisionMessage(routed: RoutedEvent): ChannelMessage | null {
   if (routed.decision.reason === 'needs-permission') {
@@ -11,6 +12,10 @@ export function decisionMessage(routed: RoutedEvent): ChannelMessage | null {
 
   if (routed.decision.reason === 'needs-input') {
     return spokenMessage(notificationText(routed) ?? NEEDS_INPUT_LINE);
+  }
+
+  if (routed.decision.reason === 'run-started') {
+    return spokenMessage(RUN_STARTED_LINE);
   }
 
   return null;

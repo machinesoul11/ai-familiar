@@ -5,9 +5,13 @@ import type { SpokenMessage } from './channel.js';
 
 export function createRecapDelivery(
   dispatch: Dispatcher,
-): (summary: ArchSummary, finalMessage?: string | null) => void {
-  return (summary: ArchSummary, finalMessage: string | null = null): void => {
-    const recap = shapeRecap({ summary, finalMessage });
+): (summary: ArchSummary, finalMessage?: string | null, subagentCount?: number) => void {
+  return (
+    summary: ArchSummary,
+    finalMessage: string | null = null,
+    subagentCount?: number,
+  ): void => {
+    const recap = shapeRecap({ summary, finalMessage, subagentCount });
     const message: SpokenMessage = { kind: 'spoken', text: recap.spokenLine };
 
     dispatch('notification', message);

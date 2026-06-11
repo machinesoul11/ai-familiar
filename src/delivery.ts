@@ -11,7 +11,7 @@ import type { DecisionSink } from './bus.js';
 import type { ArchSummary } from './summary.js';
 
 export function createDelivery(): {
-  deliverRecap: (summary: ArchSummary, finalMessage: string | null) => void;
+  deliverRecap: (summary: ArchSummary, finalMessage: string | null, subagentCount?: number) => void;
   decisionSink: DecisionSink;
   dispatch: Dispatcher;
 } {

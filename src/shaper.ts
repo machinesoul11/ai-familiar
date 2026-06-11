@@ -9,15 +9,29 @@ export interface ShapedRecap {
 export function shapeRecap(input: {
   summary: ArchSummary;
   finalMessage?: string | null;
+  subagentCount?: number;
 }): ShapedRecap {
   const gist = condenseFinalMessage(input.finalMessage ?? null);
+  const baseLine = gist === null
+    ? deterministicLine(input.summary)
+    : blendedLine(input.summary, gist);
 
   return {
     kind: 'shaped-recap',
-    spokenLine: gist === null
-      ? deterministicLine(input.summary)
-      : blendedLine(input.summary, gist),
+    spokenLine: appendSubagentCount(baseLine, input.subagentCount),
   };
+}
+
+function appendSubagentCount(line: string, subagentCount: number | undefined): string {
+  if (
+    typeof subagentCount !== 'number' ||
+    !Number.isInteger(subagentCount) ||
+    subagentCount <= 0
+  ) {
+    return line;
+  }
+
+  return `${line} ${subagentCount} subagent${subagentCount === 1 ? '' : 's'} finished.`;
 }
 
 function deterministicLine(summary: ArchSummary): string {

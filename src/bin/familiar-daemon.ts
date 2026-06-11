@@ -22,6 +22,7 @@ import {
   createAvatarThoughtDecisionSink,
   createAvatarThoughtRecapEmitter,
 } from '../avatarThoughtDelivery.js';
+import { resolveProactiveEnabled, resolveRules } from '../proactiveRules.js';
 
 const SOCKET_NAME = 'daemon.sock';
 const PIDFILE_NAME = 'daemon.pid';
@@ -113,6 +114,7 @@ async function serveDaemon(): Promise<void> {
   const daemon = createDaemon({
     sink: createEventSink([
       createRoutingSubscriber({
+        rules: resolveRules(process.env),
         sinks: [
           consoleDecisionSink(),
           ledger.sink,
@@ -123,14 +125,15 @@ async function serveDaemon(): Promise<void> {
       createAvatarSubscriber(avatarChannel),
       createArchRecapSubscriber({
         ...createArchRecapDeps(stateRoot),
-        onRecap: (summary, finalMessage) => {
+        onRecap: (summary, finalMessage, subagentCount) => {
           try {
             writeSnapshotFile(stateRoot, { v: 1, summary, finalMessage });
           } catch {
             // A snapshot-write failure must never mute the live spoken recap.
           }
 
-          delivery.deliverRecap(summary, finalMessage);
+          const n = resolveProactiveEnabled(process.env) ? subagentCount : 0;
+          delivery.deliverRecap(summary, finalMessage, n);
           avatarThoughtRecap(summary, finalMessage);
         },
       }),
