@@ -1,7 +1,7 @@
 import type { ChannelMessage, DeliveryChannel } from './channel.js';
 
 export interface SpeechBackend {
-  speak(text: string): void;
+  speak(text: string): void | Promise<void>;
 }
 
 export function createTtsChannel(backend: SpeechBackend): DeliveryChannel {

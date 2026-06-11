@@ -1,5 +1,6 @@
 import { createElevenLabsBackend } from './elevenLabsBackend.js';
 import { createSayBackend } from './sayBackend.js';
+import { createSerializedBackend } from './serializedBackend.js';
 import { createTtsChannel } from './ttsChannel.js';
 import { createDecisionDelivery } from './decisionDelivery.js';
 import { createDispatcher } from './dispatch.js';
@@ -16,7 +17,7 @@ export function createDelivery(): {
 } {
   const tts = resolveTtsConfig(process.env);
   const backend = tts.provider === 'elevenlabs' ? createElevenLabsBackend(tts.elevenLabs!) : createSayBackend();
-  const dispatch = createDispatcher([createTtsChannel(backend)]);
+  const dispatch = createDispatcher([createTtsChannel(createSerializedBackend(backend))]);
 
   // The same single audio stack is shared across consumers: the deferred recap,
   // the live needs-you decision sink, and now (4.4) the on-demand pull-recap the
