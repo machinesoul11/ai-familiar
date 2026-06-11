@@ -93,7 +93,8 @@ final class Live2DModel: AvatarModel {
         }
         // Gestures re-fire on every matching command (one-shots, like Spine).
         if let motion = state.motion {
-            motion.withCString { cubism_model_start_motion(handle, $0, 0) }
+            let index = Int32(state.motionIndex ?? 0)
+            motion.withCString { cubism_model_start_motion(handle, $0, index) }
         }
     }
 }

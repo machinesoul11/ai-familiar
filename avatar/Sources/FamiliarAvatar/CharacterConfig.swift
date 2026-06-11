@@ -42,6 +42,10 @@ struct CharacterConfig: Decodable {
         let fallback: String?
         let expression: String?
         let motion: String?
+        /// Live2D only: which motion in the `motion` group to play (default 0).
+        /// Lets two states share a group but fire different authored gestures
+        /// (e.g. `done` taps with TapBody[0], `blocked` waves with TapBody[3]).
+        let motionIndex: Int?
     }
 
     let id: String?

@@ -142,7 +142,8 @@ func writePNG(_ texture: MTLTexture, to path: String) {
 }
 
 func runSnapshot(modelDir: String, modelJson: String, outPath: String, frames: Int,
-                 transparent: Bool = false, expression: String? = nil, motion: String? = nil) {
+                 transparent: Bool = false, expression: String? = nil, motion: String? = nil,
+                 motionIndex: Int32 = 0) {
     guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else {
         FileHandle.standardError.write(Data("[spike] no metal device\n".utf8)); exit(1)
     }
@@ -157,7 +158,7 @@ func runSnapshot(modelDir: String, modelJson: String, outPath: String, frames: I
     // Step-2 self-verification: drive an expression / motion so the snapshot
     // shows the reaction (lets Claude inspect each F0x face via Read).
     if let expression { expression.withCString { cubism_model_set_expression(model, $0) } }
-    if let motion { motion.withCString { cubism_model_start_motion(model, $0, 0) } }
+    if let motion { motion.withCString { cubism_model_start_motion(model, $0, motionIndex) } }
 
     let colorDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: w, height: h, mipmapped: false)
     colorDesc.usage = [.renderTarget, .shaderRead]
@@ -251,9 +252,11 @@ if let snapIdx = CommandLine.arguments.firstIndex(of: "--snapshot") {
     }
     let expression = argValue("--expression")
     let motion = argValue("--motion")
+    let motionIndex = Int32(argValue("--motion-index").flatMap { Int($0) } ?? 0)
     let (mDir, mJson) = resolveModel()
     runSnapshot(modelDir: mDir, modelJson: mJson, outPath: outPath, frames: frames,
-                transparent: transparent, expression: expression, motion: motion)
+                transparent: transparent, expression: expression, motion: motion,
+                motionIndex: motionIndex)
 }
 
 let app = NSApplication.shared
