@@ -21,14 +21,27 @@ final class OverlayWindow: NSWindow {
         level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()))
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         isMovableByWindowBackground = false // we drive dragging from the view
-        ignoresMouseEvents = false
+        ignoresMouseEvents = true           // pass-through by default; the
+                                            // EngagementController flips this on engage
     }
 }
 
-/// The Metal view for the character. In interactive (non-click-through) mode,
-/// dragging anywhere on it repositions the whole window — the pet's "free drag".
+/// The Metal view for the character. Mouse events only reach it while the
+/// EngagementController has the window engaged (pass-through is off); a drag on
+/// her body repositions the whole window — the pet's "free drag". The controller
+/// decides whether a given press is a drag (on her body) or a click-away (on a
+/// transparent corner) and refreshes the auto-release timeout when a drag ends.
 final class DraggableMetalView: MTKView {
+    weak var engagement: EngagementController?
+
     override func mouseDown(with event: NSEvent) {
-        window?.performDrag(with: event)
+        guard let engagement else {
+            window?.performDrag(with: event)
+            return
+        }
+        if engagement.viewMouseDown(event) {
+            window?.performDrag(with: event)   // synchronous: runs its own drag loop
+            engagement.viewInteractionEnded()
+        }
     }
 }

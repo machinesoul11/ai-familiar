@@ -60,6 +60,14 @@ struct CharacterConfig: Decodable {
     /// own bounds-fit and ignores these.
     let offsetX: Double?
     let offsetY: Double?
+    /// Engage hit-region insets (fraction of the window inset on EACH side,
+    /// 0…0.49) defining the ellipse a double-click must land in to engage her —
+    /// tighten these to match where this character's body actually draws in the
+    /// square window. Absent ⇒ sensible defaults (0.20 / 0.06). The pet's
+    /// pass-through/double-click-to-engage behavior is otherwise renderer- and
+    /// character-agnostic.
+    let hitInsetX: Double?
+    let hitInsetY: Double?
     let defaultAnimation: String?
     let assets: Assets
     let states: [String: State]

@@ -7,7 +7,7 @@ import Foundation
 struct Options {
     var socketPath: String
     var monitorIndex: Int
-    var clickThrough: Bool
+    var startLocked: Bool
     var windowSize: CGFloat
     var characterDir: String?
 
@@ -18,7 +18,7 @@ struct Options {
         var opts = Options(
             socketPath: (home as NSString).appendingPathComponent("avatar.sock"),
             monitorIndex: 1,          // monitor-2 default (dual-display setup)
-            clickThrough: false,
+            startLocked: false,
             windowSize: 360,
             characterDir: nil
         )
@@ -30,7 +30,8 @@ struct Options {
             case "--monitor":     if let v = args.first, let n = Int(v) { opts.monitorIndex = n; args.removeFirst() }
             case "--size":        if let v = args.first, let n = Double(v) { opts.windowSize = CGFloat(n); args.removeFirst() }
             case "--character":   if let v = args.first { opts.characterDir = v; args.removeFirst() }
-            case "--click-through": opts.clickThrough = true
+            case "--locked":        opts.startLocked = true
+            case "--click-through": break   // deprecated: pass-through is now the default
             case "--help", "-h":
                 print("""
                 FamiliarAvatar — native desk-pet overlay (subscribes to avatar.sock)
@@ -39,9 +40,12 @@ struct Options {
                   --size <points>     square window edge (default 360)
                   --character <dir>   character pack folder (a *.config.json + assets);
                                       else $FAMILIAR_HOME/character/, else bundled spineboy
-                  --click-through     start in click-through (pet) mode
-                Hotkeys (global, need Accessibility permission):
-                  ⌃⌥⌘P  toggle click-through    ⌃⌥⌘Q  quit
+                  --locked            start engaged+locked (interactive, no auto-release)
+                  --click-through     deprecated (pass-through is the default now)
+                Pass-through by default: clicks reach apps behind her. DOUBLE-CLICK her
+                body to engage (drag to move); she auto-releases ~4 s after you stop.
+                Hotkeys (global keyboard monitor needs Accessibility permission):
+                  ⌃⌥⌘P  lock/unlock engaged    ⌃⌥⌘Q  quit
                 """)
                 exit(0)
             default:
@@ -59,11 +63,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var subscriber: SocketSubscriber!
     private var model: (any AvatarModel)!
     private var monitors: [Any] = []
-    private var clickThrough: Bool
+    private var engagement: EngagementController!
 
     init(options: Options) {
         self.options = options
-        self.clickThrough = options.clickThrough
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -94,10 +97,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         view.delegate = renderer
         window.contentView = view
-        window.ignoresMouseEvents = clickThrough
         window.orderFrontRegardless()
 
         FileHandle.standardError.write(Data("[avatar] character: \(character.config.name ?? character.config.id ?? "?") (\(character.directory.lastPathComponent)) — renderer \(character.config.renderer ?? "spine")\n".utf8))
+
+        // Pass-through by default; double-click her body to engage. Hit-region
+        // insets are tunable per character (data, not code).
+        engagement = EngagementController(
+            window: window,
+            view: view,
+            hitInsetX: CGFloat(character.config.hitInsetX ?? 0.20),
+            hitInsetY: CGFloat(character.config.hitInsetY ?? 0.06)
+        )
+        engagement.start()
+        if options.startLocked { engagement.toggleLock() }
 
         subscriber = SocketSubscriber(path: options.socketPath) { [weak self] command in
             self?.model.apply(command)
@@ -108,7 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let screenNote = actualIndex == options.monitorIndex ? "display \(actualIndex)" : "display \(actualIndex) (requested \(options.monitorIndex), not present)"
         FileHandle.standardError.write(Data("""
-        [avatar] running on \(screenNote) of \(screens.count) — \(clickThrough ? "click-through" : "interactive (drag to move)")
+        [avatar] running on \(screenNote) of \(screens.count) — pass-through (double-click to engage\(options.startLocked ? "; started locked" : ""))
         [avatar] subscribing to \(options.socketPath)
         \n
         """.utf8))
@@ -139,19 +152,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let flags = event.modifierFlags.intersection([.control, .option, .command])
             guard flags == [.control, .option, .command] else { return }
             switch event.charactersIgnoringModifiers {
-            case "p": self.toggleClickThrough()
+            case "p": self.engagement.toggleLock()
             case "q": NSApp.terminate(nil)
             default: break
             }
         }
         if let g = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: handler) { monitors.append(g) }
         if let l = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { handler($0); return $0 }) { monitors.append(l) }
-    }
-
-    private func toggleClickThrough() {
-        clickThrough.toggle()
-        window.ignoresMouseEvents = clickThrough
-        FileHandle.standardError.write(Data("[avatar] click-through \(clickThrough ? "ON" : "OFF")\n".utf8))
     }
 
     private func fail(_ message: String) {
