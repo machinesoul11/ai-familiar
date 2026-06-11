@@ -101,6 +101,10 @@ async function serveDaemon(): Promise<void> {
   const pullRecap = createPullRecap({
     loadSnapshot: () => parseSnapshot(readSnapshotFile(stateRoot)),
     dispatch: delivery.dispatch,
+    // 4.4b: the tap shows the bubble too. Mirror the spoken pull line onto the
+    // avatar channel as its silent text-twin (the 4.3b keystone), so the bubble
+    // shows exactly what she says — same single message the brain dispatched.
+    onSpoken: (message) => avatarChannel.deliver({ kind: 'avatar-thought', text: message.text }),
   });
   const intentSocket = createAvatarIntentSocket({
     onIntent: createAvatarIntentHandler({ pullRecap }),

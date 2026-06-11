@@ -35,6 +35,7 @@ export interface PullRecapDeps {
   loadSnapshot(): RecapSnapshot | null;
   dispatch: Dispatcher;
   emit?(text: string): void;
+  onSpoken?(message: SpokenMessage): void;
 }
 
 export function createPullRecap(deps: PullRecapDeps): () => void {
@@ -42,7 +43,9 @@ export function createPullRecap(deps: PullRecapDeps): () => void {
     const snapshot = deps.loadSnapshot();
 
     if (snapshot === null) {
-      deps.dispatch('audio', { kind: 'spoken', text: NO_RECAP_LINE });
+      const message: SpokenMessage = { kind: 'spoken', text: NO_RECAP_LINE };
+      deps.dispatch('audio', message);
+      deps.onSpoken?.(message);
       deps.emit?.(NO_RECAP_LINE);
       return;
     }
@@ -52,6 +55,7 @@ export function createPullRecap(deps: PullRecapDeps): () => void {
       finalMessage: snapshot.finalMessage,
     });
     deps.dispatch('audio', message);
+    deps.onSpoken?.(message);
     deps.emit?.(formatArchRecap(snapshot.summary));
   };
 }
