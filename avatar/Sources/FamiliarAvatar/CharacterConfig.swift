@@ -22,9 +22,13 @@ import Foundation
 /// isn't required here.
 struct CharacterConfig: Decodable {
     struct Assets: Decodable {
-        let skeleton: String
-        let atlas: String
+        // Spine assets (required by the "spine" renderer).
+        let skeleton: String?
+        let atlas: String?
         let texture: String?
+        // Live2D asset (required by the "live2d" renderer): the *.model3.json
+        // entry file. Cubism resolves its own textures/motions/physics from there.
+        let model: String?
     }
     struct State: Decodable {
         let animation: String
@@ -34,6 +38,10 @@ struct CharacterConfig: Decodable {
 
     let id: String?
     let name: String?
+    /// Which renderer backend draws this pack: "spine" (default when absent) or
+    /// "live2d". A pack picks its renderer; the rest of the overlay (window, pet
+    /// mode, drag, hotkeys, socket) is renderer-agnostic.
+    let renderer: String?
     let scale: Double?
     let defaultAnimation: String?
     let assets: Assets

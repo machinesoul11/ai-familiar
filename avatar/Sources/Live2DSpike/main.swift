@@ -141,7 +141,7 @@ func writePNG(_ texture: MTLTexture, to path: String) {
     FileHandle.standardError.write(Data("[spike] wrote \(path)\n".utf8))
 }
 
-func runSnapshot(modelDir: String, modelJson: String, outPath: String, frames: Int) {
+func runSnapshot(modelDir: String, modelJson: String, outPath: String, frames: Int, transparent: Bool = false) {
     guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else {
         FileHandle.standardError.write(Data("[spike] no metal device\n".utf8)); exit(1)
     }
@@ -168,7 +168,9 @@ func runSnapshot(modelDir: String, modelJson: String, outPath: String, frames: I
         rpd.colorAttachments[0].texture = colorTex
         rpd.colorAttachments[0].loadAction = .clear
         rpd.colorAttachments[0].storeAction = .store
-        rpd.colorAttachments[0].clearColor = MTLClearColorMake(0.12, 0.12, 0.14, 1.0)
+        rpd.colorAttachments[0].clearColor = transparent
+            ? MTLClearColorMake(0, 0, 0, 0)
+            : MTLClearColorMake(0.12, 0.12, 0.14, 1.0)
         rpd.depthAttachment.texture = depthTex
         rpd.depthAttachment.loadAction = .clear
         rpd.depthAttachment.storeAction = .dontCare
@@ -185,6 +187,19 @@ func runSnapshot(modelDir: String, modelJson: String, outPath: String, frames: I
         cmd.commit()
         cmd.waitUntilCompleted()
         _ = i
+    }
+
+    // Transparency probe (eyes-free de-risk): read back the corner vs the model
+    // center alpha. A transparent overlay needs corner alpha ~0 (desktop shows
+    // through) and center alpha high (the model is opaque). bgra8 in memory →
+    // byte 3 is alpha.
+    if transparent {
+        var px = [UInt8](repeating: 0, count: 4)
+        colorTex.getBytes(&px, bytesPerRow: 4, from: MTLRegionMake2D(2, 2, 1, 1), mipmapLevel: 0)
+        let cornerA = px[3]
+        colorTex.getBytes(&px, bytesPerRow: 4, from: MTLRegionMake2D(w / 2, h / 2, 1, 1), mipmapLevel: 0)
+        let centerA = px[3]
+        FileHandle.standardError.write(Data("[spike] alpha probe — corner=\(cornerA) center=\(centerA) (want corner~0, center high)\n".utf8))
     }
 
     writePNG(colorTex, to: outPath)
@@ -222,8 +237,9 @@ if let snapIdx = CommandLine.arguments.firstIndex(of: "--snapshot") {
        CommandLine.arguments.indices.contains(fIdx + 1), let n = Int(CommandLine.arguments[fIdx + 1]) {
         frames = n
     }
+    let transparent = CommandLine.arguments.contains("--transparent")
     let (mDir, mJson) = resolveModel()
-    runSnapshot(modelDir: mDir, modelJson: mJson, outPath: outPath, frames: frames)
+    runSnapshot(modelDir: mDir, modelJson: mJson, outPath: outPath, frames: frames, transparent: transparent)
 }
 
 let app = NSApplication.shared

@@ -55,9 +55,9 @@ struct Options {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let options: Options
     private var window: OverlayWindow!
-    private var renderer: MetalSpineRenderer!
+    private var renderer: (any MTKViewDelegate)?
     private var subscriber: SocketSubscriber!
-    private var model: SpineModel!
+    private var model: (any AvatarModel)!
     private var monitors: [Any] = []
     private var clickThrough: Bool
 
@@ -71,12 +71,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             fail("no character pack found (and bundled spineboy missing)")
             return
         }
-        guard let model = SpineModel(character: character) else {
-            fail("failed to load character '\(character.config.id ?? "?")' from \(character.directory.path)")
-            return
-        }
-        self.model = model
-        FileHandle.standardError.write(Data("[avatar] character: \(character.config.name ?? character.config.id ?? "?") (\(character.directory.lastPathComponent))\n".utf8))
 
         // Place a square window near the bottom-right of the chosen display.
         let screens = NSScreen.screens
@@ -90,15 +84,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window = OverlayWindow(contentRect: frame)
         let view = DraggableMetalView(frame: NSRect(origin: .zero, size: frame.size),
                                       device: MTLCreateSystemDefaultDevice())
-        guard let renderer = MetalSpineRenderer(view: view, model: model) else {
-            fail("failed to init Metal renderer")
+
+        // Pick the renderer backend from the pack's config. Each path is
+        // self-contained (Spine emits meshes our renderer draws; Cubism renders
+        // itself) — only this seam and AvatarModel.apply are shared.
+        guard buildRenderer(character: character, view: view) else {
+            fail("failed to load character '\(character.config.id ?? "?")' (renderer '\(character.config.renderer ?? "spine")') from \(character.directory.path)")
             return
         }
-        self.renderer = renderer
         view.delegate = renderer
         window.contentView = view
         window.ignoresMouseEvents = clickThrough
         window.orderFrontRegardless()
+
+        FileHandle.standardError.write(Data("[avatar] character: \(character.config.name ?? character.config.id ?? "?") (\(character.directory.lastPathComponent)) — renderer \(character.config.renderer ?? "spine")\n".utf8))
 
         subscriber = SocketSubscriber(path: options.socketPath) { [weak self] command in
             self?.model.apply(command)
@@ -113,6 +112,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         [avatar] subscribing to \(options.socketPath)
         \n
         """.utf8))
+    }
+
+    /// Build the model + renderer for the pack's chosen backend, storing both on
+    /// self. Returns false if the pack can't be loaded for that renderer.
+    private func buildRenderer(character: ResolvedCharacter, view: DraggableMetalView) -> Bool {
+        switch character.config.renderer {
+        case "live2d":
+            injectCubismShaderSource() // runtime-compile the Cubism Metal shaders (CLT, no metallib)
+            guard let r = MetalCubismRenderer(view: view, character: character) else { return false }
+            self.model = r.model
+            self.renderer = r
+            return true
+        default: // "spine" or absent — the bundled default
+            guard let m = SpineModel(character: character),
+                  let r = MetalSpineRenderer(view: view, model: m) else { return false }
+            self.model = m
+            self.renderer = r
+            return true
+        }
     }
 
     private func installHotkeys() {

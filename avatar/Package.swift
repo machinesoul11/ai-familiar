@@ -25,7 +25,7 @@ let package = Package(
         // NDJSON AvatarCommand frames, maps semantic tokens -> spineboy animations.
         .executableTarget(
             name: "FamiliarAvatar",
-            dependencies: ["CSpine"],
+            dependencies: ["CSpine", "CubismLive2D"],
             resources: [
                 .copy("Resources")
             ],

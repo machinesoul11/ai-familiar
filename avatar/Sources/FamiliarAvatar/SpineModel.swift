@@ -5,7 +5,7 @@ import CSpine
 /// renderer-side semantic-token → animation decision lives in the **config**
 /// (data), not in code — per the avatar protocol's renderer-agnostic invariant.
 /// This class just resolves each AvatarCommand to a config state and plays it.
-final class SpineModel {
+final class SpineModel: AvatarModel {
     private let handle: OpaquePointer
     private let config: CharacterConfig
     private(set) var pageCount: Int
@@ -18,8 +18,13 @@ final class SpineModel {
     private var lastStateKey: String = ""
 
     init?(character: ResolvedCharacter) {
-        let skel = character.assetPath(character.config.assets.skeleton)
-        let atlas = character.assetPath(character.config.assets.atlas)
+        guard let skelName = character.config.assets.skeleton,
+              let atlasName = character.config.assets.atlas else {
+            FileHandle.standardError.write(Data("[avatar] spine renderer needs assets.skeleton + assets.atlas\n".utf8))
+            return nil
+        }
+        let skel = character.assetPath(skelName)
+        let atlas = character.assetPath(atlasName)
         guard let h = spine_create(skel, atlas) else { return nil }
         handle = h
         config = character.config
