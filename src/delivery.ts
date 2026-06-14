@@ -5,6 +5,7 @@ import { createTtsChannel } from './ttsChannel.js';
 import { createDecisionDelivery } from './decisionDelivery.js';
 import { createDispatcher } from './dispatch.js';
 import { createRecapDelivery } from './recapDelivery.js';
+import { resolveRecapLang } from './recapLang.js';
 import { resolveTtsConfig } from './ttsConfig.js';
 import type { Dispatcher } from './dispatch.js';
 import type { DecisionSink } from './bus.js';
@@ -18,6 +19,7 @@ export function createDelivery(): {
   isSpeaking: () => boolean;
 } {
   const tts = resolveTtsConfig(process.env);
+  const lang = resolveRecapLang(process.env);
   const backend = tts.provider === 'elevenlabs' ? createElevenLabsBackend(tts.elevenLabs!) : createSayBackend();
   const serialized = createSerializedBackend(backend);
   const dispatch = createDispatcher([createTtsChannel(serialized)]);
@@ -27,7 +29,7 @@ export function createDelivery(): {
   // touch channel triggers. Exposing the dispatcher avoids spinning a second TTS
   // backend just to replay the snapshot.
   return {
-    deliverRecap: createRecapDelivery(dispatch),
+    deliverRecap: createRecapDelivery(dispatch, lang),
     decisionSink: createDecisionDelivery(dispatch),
     dispatch,
     // Stop / barge-in (5.4b): flush the shared serialized queue + kill the

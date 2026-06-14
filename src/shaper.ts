@@ -1,4 +1,6 @@
 import { condenseFinalMessage } from './condense.js';
+import { localizedRecapLine } from './recapLang.js';
+import type { RecapLang } from './recapLang.js';
 import type { ArchSummary } from './summary.js';
 
 export interface ShapedRecap {
@@ -10,7 +12,20 @@ export function shapeRecap(input: {
   summary: ArchSummary;
   finalMessage?: string | null;
   subagentCount?: number;
+  lang?: RecapLang;
 }): ShapedRecap {
+  const lang = input.lang;
+  if (lang === 'es' || lang === 'fr' || lang === 'de' || lang === 'ja') {
+    return {
+      kind: 'shaped-recap',
+      spokenLine: localizedRecapLine({
+        summary: input.summary,
+        subagentCount: input.subagentCount,
+        lang,
+      }),
+    };
+  }
+
   const gist = condenseFinalMessage(input.finalMessage ?? null);
   const baseLine = gist === null
     ? deterministicLine(input.summary)
