@@ -129,8 +129,27 @@ async function serveDaemon(): Promise<void> {
           case 'recall':
             recall();
             return;
+          case 'stop':
+            // Voice barge-in (5.4c): "hey familiar stop" — the wake word is
+            // stripped avatar-side, so the daemon classifies the bare command.
+            delivery.stop();
+            return;
           default:
             return;
+        }
+      },
+      // Stop / barge-in (5.4b): flush the shared audio queue + kill the in-flight
+      // say/afplay child. Triggered by the familiar-stop CLI, which writes the
+      // `stop` intent upstream.
+      stop: () => delivery.stop(),
+      // Tap (5.4c): a poke on Haru is context-sensitive — if she is currently
+      // speaking, stop her (barge-in); otherwise replay the latest recap. The
+      // overlay emits a dumb `tap`; the daemon decides, owning the speaking state.
+      tap: () => {
+        if (delivery.isSpeaking()) {
+          delivery.stop();
+        } else {
+          pullRecap();
         }
       },
     }),

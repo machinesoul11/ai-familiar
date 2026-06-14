@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -10,6 +10,12 @@ import type { SpeechBackend } from './ttsChannel.js';
 const FETCH_TIMEOUT_MS = 20_000;
 
 export function createElevenLabsBackend(settings: ElevenLabsSettings): SpeechBackend {
+  // The serializer keeps at most one utterance in flight, so at any moment a
+  // single speakAsync owns the current fetch controller and/or afplay child.
+  // stop() (5.4b barge-in) aborts the fetch (so a just-fetched clip never plays)
+  // and kills the playing child.
+  const handle: PlaybackHandle = { controller: null, child: null };
+
   return {
     speak(text: string): Promise<void> {
       try {
@@ -17,18 +23,44 @@ export function createElevenLabsBackend(settings: ElevenLabsSettings): SpeechBac
           return Promise.resolve();
         }
 
-        return speakAsync(text, settings);
+        return speakAsync(text, settings, handle);
       } catch {
         // Speech backends are best-effort and must not crash callers.
         return Promise.resolve();
       }
     },
+    stop(): void {
+      // Abort an in-flight fetch and kill a playing child. Whichever phase is
+      // active settles speakAsync, so the serializer's pump advances and idles.
+      try {
+        handle.controller?.abort();
+      } catch {
+        // Best-effort.
+      }
+      if (handle.child) {
+        try {
+          handle.child.kill('SIGTERM');
+        } catch {
+          // Best-effort.
+        }
+      }
+    },
   };
 }
 
-async function speakAsync(text: string, settings: ElevenLabsSettings): Promise<void> {
+interface PlaybackHandle {
+  controller: AbortController | null;
+  child: ChildProcess | null;
+}
+
+async function speakAsync(
+  text: string,
+  settings: ElevenLabsSettings,
+  handle: PlaybackHandle,
+): Promise<void> {
   let filePath: string | undefined;
   const controller = new AbortController();
+  handle.controller = controller;
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
@@ -54,6 +86,7 @@ async function speakAsync(text: string, settings: ElevenLabsSettings): Promise<v
       detached: true,
       stdio: 'ignore',
     });
+    handle.child = child;
 
     await new Promise<void>((resolve) => {
       let settled = false;
@@ -64,6 +97,9 @@ async function speakAsync(text: string, settings: ElevenLabsSettings): Promise<v
         }
 
         settled = true;
+        if (handle.child === child) {
+          handle.child = null;
+        }
 
         if (filePath) {
           void unlink(filePath).catch(() => {});
@@ -82,5 +118,8 @@ async function speakAsync(text: string, settings: ElevenLabsSettings): Promise<v
     }
   } finally {
     clearTimeout(timeout);
+    if (handle.controller === controller) {
+      handle.controller = null;
+    }
   }
 }

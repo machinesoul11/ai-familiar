@@ -2,10 +2,11 @@ import Foundation
 
 /// Writes avatar INTENTS upstream to the daemon's intent socket (a Unix domain
 /// socket at $FAMILIAR_HOME/intent.sock) — the reverse direction of the avatar.sock
-/// the SocketSubscriber reads. This is the Swift half of the 4.4/5.2 touch channel:
-/// the overlay stays dumb and emits a *semantic intent*; the daemon decides what it
-/// does. Two intents so far: a quick tap → "pull-recap" (replays the latest landed
-/// recap aloud), a long-press → "recall" (the "while you were away" activity rollup).
+/// the SocketSubscriber reads. This is the Swift half of the 4.4/5.2/5.4c touch
+/// channel: the overlay stays dumb and emits a *semantic intent*; the daemon decides
+/// what it does. A quick tap → "tap" (the daemon stops her if she's talking, else
+/// replays the latest recap), a long-press → "recall" (the "while you were away"
+/// activity rollup).
 ///
 /// Fire-and-forget. The daemon does NOT ack, so we connect, write one NDJSON line,
 /// and close — fresh per send, since a tap is a rare user gesture and a persistent
@@ -21,10 +22,12 @@ final class IntentPublisher {
         self.path = path
     }
 
-    /// Emit the "pull-recap" intent — a quick tap on her body (replays the latest
-    /// landed recap aloud).
-    func sendPullRecap() {
-        emit(intent: "pull-recap")
+    /// Emit the "tap" intent (5.4c) — a quick tap on her body. The daemon decides
+    /// what it means by context: if she's currently speaking it stops her (barge-in);
+    /// otherwise it replays the latest landed recap aloud. The overlay stays dumb —
+    /// it sends "she was tapped", not what that should do.
+    func sendTap() {
+        emit(intent: "tap")
     }
 
     /// Emit the "recall" intent — a long-press on her body (5.2: speaks the "while

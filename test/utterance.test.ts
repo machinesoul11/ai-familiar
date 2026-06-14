@@ -71,4 +71,28 @@ describe('classifyUtterance', () => {
     expect(classifyUtterance('open the pod bay doors')).toBeNull();
     expect(classifyUtterance('hello world')).toBeNull();
   });
+
+  // AC 1-4: Stop phrases
+  it('1-4. classifies stop phrases correctly (including case/whitespace/substring)', () => {
+    expect(classifyUtterance('stop')).toBe('stop');
+    expect(classifyUtterance('quiet')).toBe('stop');
+    expect(classifyUtterance('silence')).toBe('stop');
+    expect(classifyUtterance('shush')).toBe('stop');
+    expect(classifyUtterance('  STOP  ')).toBe('stop');
+    expect(classifyUtterance('please stop talking')).toBe('stop');
+  });
+
+  // AC 5: Precedence
+  it('5. stop takes precedence over recall and recap if multiple are present', () => {
+    expect(classifyUtterance('stop the recap')).toBe('stop');
+    expect(classifyUtterance('stop, what did i miss')).toBe('stop');
+  });
+
+  // AC 6: Regression
+  it('6. existing phrases remain unchanged and unrelated text returns null', () => {
+    expect(classifyUtterance('recap')).toBe('pull-recap');
+    expect(classifyUtterance('what did i miss')).toBe('recall');
+    expect(classifyUtterance('')).toBeNull();
+    expect(classifyUtterance('hello there')).toBeNull();
+  });
 });

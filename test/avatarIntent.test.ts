@@ -100,6 +100,54 @@ describe('avatarIntent', () => {
         expect(() => parseIntent(s)).not.toThrow();
       }
     });
+
+    // AC 9: parseIntent stop
+    it('9. parses stop intent correctly as a fresh object with only kind and intent', () => {
+      const raw = '{"kind":"avatar-intent","intent":"stop"}';
+      const result = parseIntent(raw);
+      expect(result).toEqual({ kind: 'avatar-intent', intent: 'stop' });
+      if (result) {
+        expect(Object.keys(result).sort()).toEqual(['intent', 'kind']);
+        expect(result).not.toHaveProperty('text');
+      }
+    });
+
+    // AC 10: parseIntent of stop WITH EXTRA FIELDS
+    it('10. parses stop intent with extra fields by stripping them and returning a fresh object', () => {
+      const raw = '{"kind":"avatar-intent","intent":"stop","foo":1}';
+      const result1 = parseIntent(raw);
+      const result2 = parseIntent(raw);
+      
+      expect(result1).toEqual({ kind: 'avatar-intent', intent: 'stop' });
+      if (result1) {
+        expect(Object.keys(result1).sort()).toEqual(['intent', 'kind']);
+      }
+      expect(result1).not.toBe(result2);
+    });
+
+    // AC 14: tap intent
+    it('14. parses tap intent correctly as a fresh object with only kind and intent', () => {
+      const raw = '{"kind":"avatar-intent","intent":"tap"}';
+      const result = parseIntent(raw);
+      expect(result).toEqual({ kind: 'avatar-intent', intent: 'tap' });
+      if (result) {
+        expect(Object.keys(result).sort()).toEqual(['intent', 'kind']);
+        expect(result).not.toHaveProperty('text');
+      }
+    });
+
+    // AC 15: tap intent with extra fields
+    it('15. parses tap intent with extra fields by stripping them and returning a fresh object', () => {
+      const raw = '{"kind":"avatar-intent","intent":"tap","foo":1}';
+      const result1 = parseIntent(raw);
+      const result2 = parseIntent(raw);
+      
+      expect(result1).toEqual({ kind: 'avatar-intent', intent: 'tap' });
+      if (result1) {
+        expect(Object.keys(result1).sort()).toEqual(['intent', 'kind']);
+      }
+      expect(result1).not.toBe(result2);
+    });
   });
 
   describe('createAvatarIntentHandler', () => {
@@ -107,8 +155,10 @@ describe('avatarIntent', () => {
     const createMocks = () => ({
       pullRecap: vi.fn(),
       recall: vi.fn(),
-      utterance: vi.fn()
-    });
+      utterance: vi.fn(),
+      stop: vi.fn(),
+      tap: vi.fn()
+    } as any);
 
     // AC 17: {kind:'avatar-intent',intent:'utterance',text:'foo'} → calls actions.utterance exactly once with 'foo'; does NOT call pullRecap or recall.
     it('17. calls utterance action with correct text', () => {
@@ -122,6 +172,8 @@ describe('avatarIntent', () => {
       expect(actions.utterance).toHaveBeenCalledWith('foo');
       expect(actions.pullRecap).not.toHaveBeenCalled();
       expect(actions.recall).not.toHaveBeenCalled();
+      expect(actions.stop).not.toHaveBeenCalled();
+      expect(actions.tap).not.toHaveBeenCalled();
     });
 
     // AC 18: Existing routing unchanged: 'pull-recap' → actions.pullRecap() exactly once; 'recall' → actions.recall() exactly once.
@@ -134,6 +186,8 @@ describe('avatarIntent', () => {
       expect(actions.pullRecap).toHaveBeenCalledWith();
       expect(actions.recall).not.toHaveBeenCalled();
       expect(actions.utterance).not.toHaveBeenCalled();
+      expect(actions.stop).not.toHaveBeenCalled();
+      expect(actions.tap).not.toHaveBeenCalled();
 
       actions.pullRecap.mockClear();
       
@@ -142,6 +196,8 @@ describe('avatarIntent', () => {
       expect(actions.recall).toHaveBeenCalledWith();
       expect(actions.pullRecap).not.toHaveBeenCalled();
       expect(actions.utterance).not.toHaveBeenCalled();
+      expect(actions.stop).not.toHaveBeenCalled();
+      expect(actions.tap).not.toHaveBeenCalled();
     });
 
     // AC 19: The handler forwards text raw — it does NOT transform/classify the text.
@@ -157,6 +213,34 @@ describe('avatarIntent', () => {
       expect(actions.utterance).not.toHaveBeenCalledWith('recall');
     });
 
+    // AC 11: HANDLER routes stop
+    it('11. routes stop intent correctly', () => {
+      const actions = createMocks();
+      const handler = createAvatarIntentHandler(actions);
+      
+      handler({ kind: 'avatar-intent', intent: 'stop' });
+      
+      expect(actions.stop).toHaveBeenCalledTimes(1);
+      expect(actions.pullRecap).not.toHaveBeenCalled();
+      expect(actions.recall).not.toHaveBeenCalled();
+      expect(actions.utterance).not.toHaveBeenCalled();
+      expect(actions.tap).not.toHaveBeenCalled();
+    });
+
+    // AC 16: Handler routes tap
+    it('16. routes tap intent correctly', () => {
+      const actions = createMocks();
+      const handler = createAvatarIntentHandler(actions);
+      
+      handler({ kind: 'avatar-intent', intent: 'tap' } as any);
+      
+      expect(actions.tap).toHaveBeenCalledTimes(1);
+      expect(actions.pullRecap).not.toHaveBeenCalled();
+      expect(actions.recall).not.toHaveBeenCalled();
+      expect(actions.utterance).not.toHaveBeenCalled();
+      expect(actions.stop).not.toHaveBeenCalled();
+    });
+
     // Sanity checks
     it('sanity: returns a function', () => {
       const handler = createAvatarIntentHandler(createMocks());
@@ -169,6 +253,8 @@ describe('avatarIntent', () => {
       expect(actions.pullRecap).not.toHaveBeenCalled();
       expect(actions.recall).not.toHaveBeenCalled();
       expect(actions.utterance).not.toHaveBeenCalled();
+      expect(actions.stop).not.toHaveBeenCalled();
+      expect(actions.tap).not.toHaveBeenCalled();
     });
 
     it('sanity: dispatching same intent N times calls the action N times', () => {

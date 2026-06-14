@@ -1,12 +1,16 @@
 export type AvatarIntent =
   | { kind: 'avatar-intent'; intent: 'pull-recap' }
   | { kind: 'avatar-intent'; intent: 'recall' }
-  | { kind: 'avatar-intent'; intent: 'utterance'; text: string };
+  | { kind: 'avatar-intent'; intent: 'utterance'; text: string }
+  | { kind: 'avatar-intent'; intent: 'stop' }
+  | { kind: 'avatar-intent'; intent: 'tap' };
 
 export interface AvatarIntentActions {
   pullRecap: () => void;
   recall: () => void;
   utterance: (text: string) => void;
+  stop: () => void;
+  tap: () => void;
 }
 
 export function parseIntent(raw: string): AvatarIntent | null {
@@ -37,6 +41,14 @@ export function parseIntent(raw: string): AvatarIntent | null {
     return { kind: 'avatar-intent', intent: 'utterance', text: parsed.text };
   }
 
+  if (parsed.intent === 'stop') {
+    return { kind: 'avatar-intent', intent: 'stop' };
+  }
+
+  if (parsed.intent === 'tap') {
+    return { kind: 'avatar-intent', intent: 'tap' };
+  }
+
   return null;
 }
 
@@ -53,6 +65,12 @@ export function createAvatarIntentHandler(
         return;
       case 'utterance':
         actions.utterance(intent.text);
+        return;
+      case 'stop':
+        actions.stop();
+        return;
+      case 'tap':
+        actions.tap();
         return;
     }
   };

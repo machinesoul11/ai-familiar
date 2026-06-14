@@ -1,5 +1,6 @@
-export type RecognizedIntent = 'pull-recap' | 'recall' | null;
+export type RecognizedIntent = 'pull-recap' | 'recall' | 'stop' | null;
 
+const STOP_PHRASES = ['stop', 'quiet', 'silence', 'shush'];
 const RECALL_PHRASES = [
   'while i was away',
   'while i was gone',
@@ -15,6 +16,10 @@ export function classifyUtterance(text: string): RecognizedIntent {
 
   if (t === '') {
     return null;
+  }
+
+  if (STOP_PHRASES.some((phrase) => t.includes(phrase))) {
+    return 'stop';
   }
 
   if (RECALL_PHRASES.some((phrase) => t.includes(phrase))) {

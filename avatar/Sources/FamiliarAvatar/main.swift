@@ -54,10 +54,11 @@ struct Options {
                   --locked            start engaged+locked (interactive, no auto-release)
                   --click-through     deprecated (pass-through is the default now)
                 Pass-through by default: clicks reach apps behind her. DOUBLE-CLICK her
-                body to engage; then DRAG to move, quick-TAP her for a spoken recap, or
-                LONG-PRESS (~0.5 s) her for the "while you were away" rollup. She
-                auto-releases ~4 s after you stop. With --wake-word you can also just
-                SAY "<wake> recap" or "<wake> what did I miss".
+                body to engage; then DRAG to move, quick-TAP her to STOP her if she's
+                talking (else replay the recap), or LONG-PRESS (~0.5 s) her for the
+                "while you were away" rollup. She auto-releases ~4 s after you stop.
+                With --wake-word you can also just SAY "<wake> recap", "<wake> what did
+                I miss", or "<wake> stop" to silence her.
                 Hotkeys (global keyboard monitor needs Accessibility permission):
                   ⌃⌥⌘P  lock/unlock engaged    ⌃⌥⌘Q  quit
                 """)
@@ -144,7 +145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let now = Date()
             guard now.timeIntervalSince(self.lastPullTapAt) > 1.5 else { return }
             self.lastPullTapAt = now
-            self.intentPublisher.sendPullRecap()
+            self.intentPublisher.sendTap()
         }
         engagement.onLongPress = { [weak self] in self?.intentPublisher.sendRecall() }
 
