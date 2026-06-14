@@ -13,8 +13,7 @@ import { writeSnapshotFile, readSnapshotFile } from '../recapSnapshotStore.js';
 import { parseSnapshot } from '../recapSnapshot.js';
 import { createPullRecap } from '../pullRecap.js';
 import { createRecall } from '../recall.js';
-import { createAvatarIntentHandler } from '../avatarIntent.js';
-import { classifyUtterance } from '../utterance.js';
+import { resolveIntentAction } from '../intentPolicy.js';
 import { createAvatarIntentSocket } from '../avatarIntentSocket.js';
 import { createAvatarPublishSocket } from '../avatarPublishSocket.js';
 import { createAvatarBackend } from '../avatarBackend.js';
@@ -120,41 +119,22 @@ async function serveDaemon(): Promise<void> {
     onSpoken: (message) => avatarChannel.deliver({ kind: 'avatar-thought', text: message.text }),
   });
   const intentSocket = createAvatarIntentSocket({
-    onIntent: createAvatarIntentHandler({
-      pullRecap,
-      recall,
-      utterance: (text) => {
-        switch (classifyUtterance(text)) {
-          case 'pull-recap':
-            pullRecap();
-            return;
-          case 'recall':
-            recall();
-            return;
-          case 'stop':
-            // Voice barge-in (5.4c): "hey familiar stop" — the wake word is
-            // stripped avatar-side, so the daemon classifies the bare command.
-            delivery.stop();
-            return;
-          default:
-            return;
-        }
-      },
-      // Stop / barge-in (5.4b): flush the shared audio queue + kill the in-flight
-      // say/afplay child. Triggered by the familiar-stop CLI, which writes the
-      // `stop` intent upstream.
-      stop: () => delivery.stop(),
-      // Tap (5.4c): a poke on Haru is context-sensitive — if she is currently
-      // speaking, stop her (barge-in); otherwise replay the latest recap. The
-      // overlay emits a dumb `tap`; the daemon decides, owning the speaking state.
-      tap: () => {
-        if (delivery.isSpeaking()) {
-          delivery.stop();
-        } else {
+    onIntent: (intent) => {
+      const action = resolveIntentAction(intent, loadConfig().config, delivery.isSpeaking());
+      switch (action) {
+        case 'pull-recap':
           pullRecap();
-        }
-      },
-    }),
+          return;
+        case 'recall':
+          recall();
+          return;
+        case 'stop':
+          delivery.stop();
+          return;
+        case 'none':
+          return;
+      }
+    },
   });
 
   const daemon = createDaemon({
