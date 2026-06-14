@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.familiar.avatar.sttspike</string>
+    <key>CFBundleName</key>
+    <string>FamiliarSTTSpike</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Familiar listens for your wake word so you can talk to your desk companion.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Familiar transcribes your spoken commands on-device to act on them.</string>
+</dict>
+</plist>
