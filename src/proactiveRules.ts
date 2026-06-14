@@ -22,3 +22,7 @@ export function resolveRules(env: Record<string, string | undefined>): Rule[] {
     ? [...proactiveRules, ...defaultRules]
     : defaultRules;
 }
+
+export function rulesForProactive(proactive: boolean): Rule[] {
+  return proactive ? [...proactiveRules, ...defaultRules] : defaultRules;
+}

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createEventSink, createRouterSubscriber } from '../src/bus.js';
-import type { EventSubscriber } from '../src/bus.js';
+import { createEventSink, createRouterSubscriber, createRoutingSubscriber } from '../src/bus.js';
+import type { EventSubscriber, DecisionSink, RoutedEvent } from '../src/bus.js';
 import { normalize } from '../src/normalize.js';
 import type { RawHookEvent } from '../src/daemon.js';
 import type { Rule } from '../src/router.js';
@@ -100,6 +100,49 @@ describe('Event Bus (src/bus.ts)', () => {
 
       expect(spy).toHaveBeenCalledWith('would notify: run-finished (Stop)');
       spy.mockRestore();
+    });
+  });
+
+  describe('Acceptance Criterion 15 (6.2): createRoutingSubscriber rulesFor', () => {
+    it('routes each event by the set returned for that event', () => {
+      const ruleA: Rule = { name: 'A', evaluate: () => ({ channel: 'audio', reason: 'A' }) };
+      const ruleB: Rule = { name: 'B', evaluate: () => ({ channel: 'notification', reason: 'B' }) };
+      
+      let callCount = 0;
+      const rulesFor = vi.fn(() => {
+        callCount++;
+        return callCount === 1 ? [ruleA] : [ruleB];
+      });
+
+      const decisions: RoutedEvent[] = [];
+      const sink: DecisionSink = (routed) => decisions.push(routed);
+
+      const sub = createRoutingSubscriber({ rulesFor, sinks: [sink] });
+
+      const ev1 = normalize(createRawEvent('Start'));
+      const ev2 = normalize(createRawEvent('Stop'));
+
+      sub(ev1);
+      sub(ev2);
+
+      expect(rulesFor).toHaveBeenCalledTimes(2);
+      expect(decisions).toHaveLength(2);
+      expect(decisions[0].decision).toEqual({ channel: 'audio', reason: 'A' });
+      expect(decisions[1].decision).toEqual({ channel: 'notification', reason: 'B' });
+    });
+
+    it('matches existing rules behavior when rulesFor is omitted', () => {
+      const customRule: Rule = { name: 'C', evaluate: () => ({ channel: 'audio', reason: 'C' }) };
+
+      const decisions: RoutedEvent[] = [];
+      const sink: DecisionSink = (routed) => decisions.push(routed);
+
+      const sub = createRoutingSubscriber({ rules: [customRule], sinks: [sink] });
+      const ev = normalize(createRawEvent('Stop'));
+      sub(ev);
+
+      expect(decisions).toHaveLength(1);
+      expect(decisions[0].decision).toEqual({ channel: 'audio', reason: 'C' });
     });
   });
 });

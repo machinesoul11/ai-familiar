@@ -44,10 +44,12 @@ export function createRouterSubscriber(opts: {
 
 export function createRoutingSubscriber(opts: {
   rules?: Rule[];
+  rulesFor?: () => Rule[];
   sinks: DecisionSink[];
 }): EventSubscriber {
   return (event) => {
-    const decision = route(event, opts.rules);
+    const rules = opts.rulesFor ? opts.rulesFor() : opts.rules;
+    const decision = route(event, rules);
     const routed: RoutedEvent = { event, decision };
 
     for (const sink of opts.sinks) {

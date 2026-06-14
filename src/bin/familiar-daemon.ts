@@ -24,7 +24,8 @@ import {
   createAvatarThoughtDecisionSink,
   createAvatarThoughtRecapEmitter,
 } from '../avatarThoughtDelivery.js';
-import { resolveProactiveEnabled, resolveRules } from '../proactiveRules.js';
+import { rulesForProactive } from '../proactiveRules.js';
+import { loadEffectiveConfig } from '../effectiveConfig.js';
 
 const SOCKET_NAME = 'daemon.sock';
 const PIDFILE_NAME = 'daemon.pid';
@@ -78,8 +79,9 @@ async function serveDaemon(): Promise<void> {
   }
 
   const pidfilePath = join(stateRoot, PIDFILE_NAME);
+  const loadConfig = () => loadEffectiveConfig(process.env, stateRoot);
   const ledger = createDecisionLedger();
-  const delivery = createDelivery();
+  const delivery = createDelivery({ loadConfig });
 
   // Avatar lane (4.2c): an ungated, always-on projection of the event stream onto Haru.
   // The publish socket broadcasts NDJSON AvatarCommand frames on <stateRoot>/avatar.sock;
@@ -158,7 +160,7 @@ async function serveDaemon(): Promise<void> {
   const daemon = createDaemon({
     sink: createEventSink([
       createRoutingSubscriber({
-        rules: resolveRules(process.env),
+        rulesFor: () => rulesForProactive(loadConfig().config.proactive),
         sinks: [
           consoleDecisionSink(),
           ledger.sink,
@@ -176,7 +178,7 @@ async function serveDaemon(): Promise<void> {
             // A snapshot-write failure must never mute the live spoken recap.
           }
 
-          const n = resolveProactiveEnabled(process.env) ? subagentCount : 0;
+          const n = loadConfig().config.proactive ? subagentCount : 0;
           delivery.deliverRecap(summary, finalMessage, n);
           avatarThoughtRecap(summary, finalMessage);
         },

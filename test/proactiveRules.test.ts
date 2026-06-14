@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { route } from '../src/router.js';
-import { resolveProactiveEnabled, proactiveRules, resolveRules } from '../src/proactiveRules.js';
+import { resolveProactiveEnabled, proactiveRules, resolveRules, rulesForProactive } from '../src/proactiveRules.js';
 
 describe('proactiveRules', () => {
   it('AC1: resolveProactiveEnabled(env)', () => {
@@ -77,5 +77,18 @@ describe('proactiveRules', () => {
         expect(result).toBeNull();
       }
     }
+  });
+
+  it('AC16: rulesForProactive(true/false) returns exact arrays', () => {
+    const rulesTrue = rulesForProactive(true);
+    const rulesFalse = rulesForProactive(false);
+
+    // false -> exactly defaultRules (assuming defaultRules are tested indirectly via resolveRules/route)
+    // we know resolveRules(0) gives defaultRules
+    const expectedFalse = resolveRules({ FAMILIAR_PROACTIVE: '0' });
+    expect(rulesFalse).toEqual(expectedFalse);
+
+    // true -> [...proactiveRules, ...defaultRules]
+    expect(rulesTrue).toEqual([...proactiveRules, ...expectedFalse]);
   });
 });

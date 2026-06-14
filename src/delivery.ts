@@ -5,23 +5,28 @@ import { createTtsChannel } from './ttsChannel.js';
 import { createDecisionDelivery } from './decisionDelivery.js';
 import { createDispatcher } from './dispatch.js';
 import { createRecapDelivery } from './recapDelivery.js';
-import { resolveRecapLang } from './recapLang.js';
 import { resolveTtsConfig } from './ttsConfig.js';
+import { createRoutingBackend } from './routingBackend.js';
 import type { Dispatcher } from './dispatch.js';
 import type { DecisionSink } from './bus.js';
 import type { ArchSummary } from './summary.js';
+import type { EffectiveConfig } from './effectiveConfig.js';
 
-export function createDelivery(): {
+export function createDelivery(deps: { loadConfig: () => EffectiveConfig }): {
   deliverRecap: (summary: ArchSummary, finalMessage: string | null, subagentCount?: number) => void;
   decisionSink: DecisionSink;
   dispatch: Dispatcher;
   stop: () => void;
   isSpeaking: () => boolean;
 } {
-  const tts = resolveTtsConfig(process.env);
-  const lang = resolveRecapLang(process.env);
-  const backend = tts.provider === 'elevenlabs' ? createElevenLabsBackend(tts.elevenLabs!) : createSayBackend();
-  const serialized = createSerializedBackend(backend);
+  const bootTts = resolveTtsConfig(process.env);
+  const serialized = createSerializedBackend(createRoutingBackend({
+    resolveProvider: () => deps.loadConfig().tts.provider,
+    backends: {
+      say: createSayBackend,
+      elevenlabs: () => createElevenLabsBackend(bootTts.elevenLabs!),
+    },
+  }));
   const dispatch = createDispatcher([createTtsChannel(serialized)]);
 
   // The same single audio stack is shared across consumers: the deferred recap,
@@ -29,7 +34,9 @@ export function createDelivery(): {
   // touch channel triggers. Exposing the dispatcher avoids spinning a second TTS
   // backend just to replay the snapshot.
   return {
-    deliverRecap: createRecapDelivery(dispatch, lang),
+    deliverRecap: (summary, finalMessage, subagentCount) => {
+      createRecapDelivery(dispatch, deps.loadConfig().config.recapLang)(summary, finalMessage, subagentCount);
+    },
     decisionSink: createDecisionDelivery(dispatch),
     dispatch,
     // Stop / barge-in (5.4b): flush the shared serialized queue + kill the

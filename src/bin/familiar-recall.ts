@@ -3,10 +3,10 @@ import { createTtsChannel } from '../ttsChannel.js';
 import { createDispatcher } from '../dispatch.js';
 import { createElevenLabsBackend } from '../elevenLabsBackend.js';
 import { createSayBackend } from '../sayBackend.js';
-import { resolveTtsConfig } from '../ttsConfig.js';
 import { resolveStateRootFromEnv } from '../daemon.js';
 import { createDecisionLedger } from '../ledger.js';
 import { createRecall } from '../recall.js';
+import { loadEffectiveConfig } from '../effectiveConfig.js';
 
 async function main(): Promise<void> {
   const stateRoot = resolveStateRootFromEnv(process.env);
@@ -18,7 +18,7 @@ async function main(): Promise<void> {
     }
   }
 
-  const tts = resolveTtsConfig(process.env);
+  const tts = loadEffectiveConfig(process.env, stateRoot).tts;
   const backend = tts.provider === 'elevenlabs' ? createElevenLabsBackend(tts.elevenLabs!) : createSayBackend();
   const dispatch = createDispatcher([createTtsChannel(backend)]);
   const ledger = createDecisionLedger();
