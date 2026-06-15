@@ -13,17 +13,32 @@ struct Options {
     var characterDir: String?
     var wakeWord: String?
 
+    /// Base window edge (points) for `scale: 1.0`. The user-facing `avatar.scale`
+    /// is a multiplier on top of this; `--size` overrides with an absolute edge.
+    static let baseWindowSize: CGFloat = 360
+
     static func parse() -> Options {
         let env = ProcessInfo.processInfo.environment
         let home = env["FAMILIAR_HOME"]
             ?? (NSHomeDirectory() as NSString).appendingPathComponent(".familiar")
+
+        // Presentation prefs resolve with precedence: explicit env var >
+        // settings.json > built-in default (the locked cross-language contract),
+        // and the CLI flags parsed below override on top of all three. Env vars
+        // mirror Node's SETTINGS_ENV_KEYS and share the file's units (monitor
+        // 1-based, scale a multiplier).
+        let file = AvatarSettings.load(home: home)
+        let scale = doubleEnv(env["FAMILIAR_AVATAR_SCALE"]) ?? file.scale ?? 1.0
+        let monitor1Based = intEnv(env["FAMILIAR_AVATAR_MONITOR"]) ?? file.monitor ?? 2
+        let characterPref = nonEmptyEnv(env["FAMILIAR_AVATAR_CHARACTER"]) ?? file.character
+
         var opts = Options(
             socketPath: (home as NSString).appendingPathComponent("avatar.sock"),
             intentSocketPath: (home as NSString).appendingPathComponent("intent.sock"),
-            monitorIndex: 1,          // monitor-2 default (dual-display setup)
+            monitorIndex: max(0, monitor1Based - 1), // 1-based settings → 0-based NSScreen index
             startLocked: false,
-            windowSize: 360,
-            characterDir: nil,
+            windowSize: baseWindowSize * CGFloat(scale),
+            characterDir: characterPref.flatMap { resolveCharacterDir($0, home: home) },
             wakeWord: nil
         )
         var args = Array(CommandLine.arguments.dropFirst())
@@ -43,10 +58,17 @@ struct Options {
                 FamiliarAvatar — native desk-pet overlay (subscribes to avatar.sock)
                   --socket <path>     Unix socket to subscribe to (default $FAMILIAR_HOME/avatar.sock)
                   --intent-socket <p> upstream intent socket to write to (default $FAMILIAR_HOME/intent.sock)
-                  --monitor <n>       0-based display index (default 1 = monitor-2)
-                  --size <points>     square window edge (default 360)
-                  --character <dir>   character pack folder (a *.config.json + assets);
+                  --monitor <n>       0-based display index (default from settings avatar.monitor,
+                                      a 1-based number; built-in 2 = monitor-2)
+                  --size <points>     absolute square window edge — OVERRIDES avatar.scale
+                                      (default = 360 × scale; built-in scale 1.0 ⇒ 360)
+                  --character <dir>   character pack folder (a *.config.json + assets); else
+                                      settings avatar.character (a NAME under
+                                      $FAMILIAR_HOME/characters/ or ./characters/, or a path),
                                       else $FAMILIAR_HOME/character/, else bundled spineboy
+                Presentation prefs (scale / monitor / character) also read from
+                $FAMILIAR_HOME/settings.json; precedence: CLI flag > FAMILIAR_AVATAR_* env
+                > settings.json > built-in default (run `familiar-config` to edit the store).
                   --wake-word <word>  5.4 STT (default OFF): listen for this spoken word, then
                                       send the command after it as a voice intent. REQUIRES the
                                       signed FamiliarAvatar.app (mic/speech TCC) — ignored when
@@ -68,6 +90,44 @@ struct Options {
             }
         }
         return opts
+    }
+
+    /// A valid env override (else nil → fall through to file/default), mirroring
+    /// Node's `Number()`-based env parsing. Empty/non-numeric ⇒ nil.
+    private static func doubleEnv(_ v: String?) -> Double? {
+        guard let v, !v.isEmpty else { return nil }
+        return Double(v)
+    }
+
+    private static func intEnv(_ v: String?) -> Int? {
+        guard let v, !v.isEmpty else { return nil }
+        return Int(v)
+    }
+
+    private static func nonEmptyEnv(_ v: String?) -> String? {
+        guard let v else { return nil }
+        let t = v.trimmingCharacters(in: .whitespaces)
+        return t.isEmpty ? nil : t
+    }
+
+    /// Resolve the `avatar.character` preference to a pack directory. A value
+    /// containing "/" is a literal path (consistent with --character). Otherwise
+    /// it's a NAME tried under `$FAMILIAR_HOME/characters/<name>/` then
+    /// `./characters/<name>/` (dev convenience). Not found ⇒ nil → the existing
+    /// ResolvedCharacter fallbacks ($FAMILIAR_HOME/character/ → bundled spineboy).
+    private static func resolveCharacterDir(_ value: String, home: String) -> String? {
+        if value.contains("/") { return value }
+        let fm = FileManager.default
+        let candidates = [
+            (home as NSString).appendingPathComponent("characters/\(value)"),
+            (fm.currentDirectoryPath as NSString).appendingPathComponent("characters/\(value)"),
+        ]
+        for dir in candidates {
+            var isDir: ObjCBool = false
+            if fm.fileExists(atPath: dir, isDirectory: &isDir), isDir.boolValue { return dir }
+        }
+        FileHandle.standardError.write(Data("[avatar] settings character '\(value)' not found under $FAMILIAR_HOME/characters/ or ./characters/; using fallback\n".utf8))
+        return nil
     }
 }
 
@@ -184,7 +244,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let screenNote = actualIndex == options.monitorIndex ? "display \(actualIndex)" : "display \(actualIndex) (requested \(options.monitorIndex), not present)"
         FileHandle.standardError.write(Data("""
-        [avatar] running on \(screenNote) of \(screens.count) — pass-through (double-click to engage\(options.startLocked ? "; started locked" : ""))
+        [avatar] window \(Int(options.windowSize))pt on \(screenNote) of \(screens.count) — pass-through (double-click to engage\(options.startLocked ? "; started locked" : ""))
         [avatar] subscribing to \(options.socketPath)
         \n
         """.utf8))

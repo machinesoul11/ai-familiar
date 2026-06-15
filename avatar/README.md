@@ -56,7 +56,16 @@ swift build                       # compiles spine-cpp + the app
 ```
 
 Options: `--socket <path>` (default `$FAMILIAR_HOME/avatar.sock`), `--monitor <n>`
-(0-based, default 1), `--size <points>` (default 360), `--click-through`.
+(0-based), `--size <points>` (absolute edge — overrides `scale`), `--character <dir>`.
+
+**Presentation prefs read from the daemon store.** `scale`, `monitor`, and
+`character` also come from `$FAMILIAR_HOME/settings.json` (the Phase-6 settings
+store — edit it with `familiar-config`), so the avatar stays a dumb renderer of
+the daemon's single source of truth. Precedence per field: **CLI flag >
+`FAMILIAR_AVATAR_*` env > `settings.json` > built-in default** (`scale` 1.0 ⇒ a
+360 pt window; `monitor` is 1-based, default 2 = monitor-2; `character` is a pack
+NAME under `$FAMILIAR_HOME/characters/<name>/` or `./characters/<name>/`, or a
+literal path). An absent `settings.json` ≡ today's defaults.
 
 Hotkeys (global — need Accessibility permission; otherwise work while the app is
 focused): **⌃⌥⌘P** toggle click-through (pet mode), **⌃⌥⌘Q** quit. Drag the
