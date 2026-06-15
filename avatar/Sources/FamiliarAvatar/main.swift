@@ -12,6 +12,11 @@ struct Options {
     var windowSize: CGFloat
     var characterDir: String?
     var wakeWord: String?
+    /// $FAMILIAR_HOME — the removable state root (settings.json / .env live here).
+    var home: String
+    /// `familiar-config` invocation for the menubar settings pane, pre-split into
+    /// argv tokens. Nil ⇒ the pane is read-only. (`--config-cmd` > FAMILIAR_CONFIG.)
+    var configCmd: [String]?
 
     /// Base window edge (points) for `scale: 1.0`. The user-facing `avatar.scale`
     /// is a multiplier on top of this; `--size` overrides with an absolute edge.
@@ -39,7 +44,9 @@ struct Options {
             startLocked: false,
             windowSize: baseWindowSize * CGFloat(scale),
             characterDir: characterPref.flatMap { resolveCharacterDir($0, home: home) },
-            wakeWord: nil
+            wakeWord: nil,
+            home: home,
+            configCmd: tokenizeConfigCmd(env["FAMILIAR_CONFIG"])
         )
         var args = Array(CommandLine.arguments.dropFirst())
         while let arg = args.first {
@@ -51,6 +58,7 @@ struct Options {
             case "--size":        if let v = args.first, let n = Double(v) { opts.windowSize = CGFloat(n); args.removeFirst() }
             case "--character":   if let v = args.first { opts.characterDir = v; args.removeFirst() }
             case "--wake-word":   if let v = args.first { opts.wakeWord = v; args.removeFirst() }
+            case "--config-cmd":  if let v = args.first { opts.configCmd = tokenizeConfigCmd(v); args.removeFirst() }
             case "--locked":        opts.startLocked = true
             case "--click-through": break   // deprecated: pass-through is now the default
             case "--help", "-h":
@@ -73,6 +81,11 @@ struct Options {
                                       send the command after it as a voice intent. REQUIRES the
                                       signed FamiliarAvatar.app (mic/speech TCC) — ignored when
                                       run as a bare CLI. e.g. --wake-word haru
+                  --config-cmd <cmd>  command the menubar settings pane shells out to for writes
+                                      (else FAMILIAR_CONFIG env). Prefer absolute paths so PATH
+                                      doesn't matter, e.g.
+                                      --config-cmd "node /abs/dist/bin/familiar-config.js".
+                                      Unset ⇒ the pane is read-only.
                   --locked            start engaged+locked (interactive, no auto-release)
                   --click-through     deprecated (pass-through is the default now)
                 Pass-through by default: clicks reach apps behind her. DOUBLE-CLICK her
@@ -83,6 +96,8 @@ struct Options {
                 I miss", or "<wake> stop" to silence her.
                 Hotkeys (global keyboard monitor needs Accessibility permission):
                   ⌃⌥⌘P  lock/unlock engaged    ⌃⌥⌘Q  quit
+                  ⌃⌥⌘S  open the settings menu at the cursor (also in the
+                        menu bar as “✦ Familiar”, if it fits)
                 """)
                 exit(0)
             default:
@@ -108,6 +123,16 @@ struct Options {
         guard let v else { return nil }
         let t = v.trimmingCharacters(in: .whitespaces)
         return t.isEmpty ? nil : t
+    }
+
+    /// Split a `familiar-config` command string into argv tokens on whitespace
+    /// (e.g. "node /abs/familiar-config.js" → ["node", "/abs/familiar-config.js"]).
+    /// Empty/absent ⇒ nil (the pane stays read-only). Paths with spaces are not
+    /// supported — use a space-free path (the by-eye dev constraint).
+    private static func tokenizeConfigCmd(_ v: String?) -> [String]? {
+        guard let v else { return nil }
+        let tokens = v.split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
+        return tokens.isEmpty ? nil : tokens
     }
 
     /// Resolve the `avatar.character` preference to a pack directory. A value
@@ -142,6 +167,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var thoughtBubble: ThoughtBubbleController!
     private var intentPublisher: IntentPublisher!
     private var speechListener: SpeechListener?
+    private var settingsMenu: SettingsMenuController!
     private var lastPullTapAt = Date.distantPast
 
     init(options: Options) {
@@ -240,6 +266,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         subscriber.start()
 
+        // Phase 6 control surface: a menubar settings pane that shells out to
+        // familiar-config for writes (validation stays in the Node/Vitest loop).
+        settingsMenu = SettingsMenuController(
+            home: options.home,
+            configCmd: options.configCmd,
+            relaunch: { [weak self] in self?.relaunch() }
+        )
+        settingsMenu.install()
+
         installHotkeys()
 
         let screenNote = actualIndex == options.monitorIndex ? "display \(actualIndex)" : "display \(actualIndex) (requested \(options.monitorIndex), not present)"
@@ -277,6 +312,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             switch event.charactersIgnoringModifiers {
             case "p": self.engagement.toggleLock()
             case "q": NSApp.terminate(nil)
+            case "s": self.settingsMenu.popUpAtMouse()
             default: break
             }
         }
@@ -286,6 +322,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func fail(_ message: String) {
         FileHandle.standardError.write(Data("[avatar] FATAL: \(message)\n".utf8))
+        NSApp.terminate(nil)
+    }
+
+    /// Re-exec the avatar with its original launch arguments, then quit — the way
+    /// the menubar pane applies the presentation fields (scale / monitor /
+    /// character) that are read only at startup. Launched from a signed .app, we
+    /// re-open the bundle (preserving the bundle context, e.g. mic/speech TCC);
+    /// as a bare CLI we re-exec the binary directly. Two instances coexist for a
+    /// blink — fine, since the avatar only CONNECTS to sockets (the daemon binds).
+    private func relaunch() {
+        let args = Array(CommandLine.arguments.dropFirst())
+        let bundlePath = Bundle.main.bundlePath
+        let process = Process()
+        if bundlePath.hasSuffix(".app") {
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+            process.arguments = [bundlePath, "--args"] + args
+        } else {
+            process.executableURL = URL(fileURLWithPath: CommandLine.arguments[0])
+            process.arguments = args
+        }
+        do {
+            try process.run()
+        } catch {
+            FileHandle.standardError.write(Data("[avatar] relaunch failed: \(error.localizedDescription)\n".utf8))
+            return
+        }
         NSApp.terminate(nil)
     }
 }
