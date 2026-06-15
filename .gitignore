@@ -16,3 +16,10 @@ avatar/.swiftpm/
 # Live2D Cubism sample model (Free Material License — kept local, never redistributed;
 # the real character is bought and lives in $FAMILIAR_HOME/character/)
 avatar/characters/haru/
+
+# Live2D Cubism Core — PROPRIETARY (Live2D Proprietary Software License). The Core
+# may only be redistributed embedded in a finished application, NOT as standalone
+# library files in a public repo. Users download the free Cubism SDK for Native and
+# drop these in themselves — see avatar/Vendor/Live2DCore/README.md.
+avatar/Vendor/Live2DCore/lib/libLive2DCubismCore.a
+avatar/Sources/CubismLive2D/core/Live2DCubismCore.h

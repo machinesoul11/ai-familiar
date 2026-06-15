@@ -148,11 +148,18 @@ Settings are stored under `$FAMILIAR_HOME`: `settings.json` for preferences and
 
 The voice + recap core works without it, but Familiar can also render a native,
 transparent, always-on-top macOS overlay that reacts to the agent's state. A
-**Spine** sample character (`spineboy`) is **bundled**, so the overlay renders out
-of the box:
+**Spine** sample character (`spineboy`) is **bundled** and is the default renderer.
+
+> **One-time prerequisite:** the avatar app embeds the Live2D Cubism renderer, so it
+> links the proprietary **Cubism Core**, which is *not* shipped in this repo (its
+> license forbids standalone redistribution). Download the free **Cubism SDK for
+> Native** and drop in two files first — see
+> [`avatar/Vendor/Live2DCore/README.md`](avatar/Vendor/Live2DCore/README.md). The Node
+> daemon (Familiar's core) needs none of this.
 
 ```sh
 cd avatar
+# (place the Cubism Core first — see the note above)
 swift build --product FamiliarAvatar
 .build/debug/FamiliarAvatar --monitor 0 \
   --config-cmd "node /abs/path/to/dist/bin/familiar-config.js"
@@ -232,8 +239,12 @@ Familiar's own source code is released under the **MIT license** — see
 The optional macOS avatar bundles third-party runtimes under their own separate
 terms (these are **not** covered by the MIT license): the **Spine Runtimes** and
 the **spineboy** sample asset (Esoteric Software — evaluation use; each user must
-obtain their own Spine Editor license), and the **Live2D Cubism** Core + Native
-Framework (Live2D Inc. — proprietary / Open Software License). Notably, shipping a
-Live2D "Expandable Application" that loads arbitrary Cubism models for distribution
-may require a separate paid Live2D license. Full details, copyright notices, and
-links are in [`avatar/THIRD-PARTY-NOTICES.md`](avatar/THIRD-PARTY-NOTICES.md).
+obtain their own Spine Editor license), and the **Live2D Cubism Native Framework**
+(Live2D Inc. — Open Software License). The proprietary **Live2D Cubism Core** is
+**not** shipped here — its license forbids standalone redistribution, so you
+download the free Cubism SDK for Native yourself (see
+[`avatar/Vendor/Live2DCore/README.md`](avatar/Vendor/Live2DCore/README.md)).
+Separately, shipping a Live2D "Expandable Application" that loads arbitrary Cubism
+models for distribution may require a paid Live2D license. Full details, copyright
+notices, and links are in
+[`avatar/THIRD-PARTY-NOTICES.md`](avatar/THIRD-PARTY-NOTICES.md).

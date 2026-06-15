@@ -29,13 +29,19 @@ Copyright (c) Live2D Inc. Vendored from the **Cubism SDK for Native 5 R5**
   `Rendering/Metal/CubismShader_Metal.mm`, carries a small marked **Familiar patch**
   (`CubismShaderInject.h`) that runtime-compiles the Metal shaders, because the Command
   Line Tools ship no offline `metallib` compiler.
-- **`Vendor/Live2DCore`** (the proprietary Live2D Cubism Core static library + header) —
+- **The proprietary Live2D Cubism Core (static library + `Live2DCubismCore.h` header)** —
   **Live2D Proprietary Software License Agreement** (`Vendor/Live2DCore/LICENSE.md`,
-  `SDK-LICENSE.md`). `lib/macos/arm64/libLive2DCubismCore.a` is listed as redistributable
-  in `RedistributableFiles.txt`. **Note for a public OSS release:** a drop-in
-  load-any-model app is an "Expandable Application" under the Cubism license and needs a
-  separate (paid) Live2D business license — a release-time matter, not required for
-  personal/local use.
+  `SDK-LICENSE.md`). These files are **NOT committed to this repository.** Although the
+  Core appears on `RedistributableFiles.txt`, the Proprietary License (§5.1, §5.2.1,
+  §5.3.2) permits redistribution only when the Core is *embedded in a finished derivative
+  application* — not as standalone library files published in a public source repo for
+  others to build against. So Familiar ships without the Core: users download the free
+  Cubism SDK for Native and drop in two files themselves (see
+  `Vendor/Live2DCore/README.md`). Both paths are gitignored.
+
+  Separately, a drop-in load-any-model app is an "Expandable Application" under the
+  Cubism license and needs a separate (paid) Live2D business license for distribution —
+  a release-time matter, not required for personal/local use.
 
 The Cubism **sample models** (e.g. Haru) ship under the Live2D Free Material License and
 are **not** committed to this repository (see `.gitignore`); the production character is

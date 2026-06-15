@@ -49,6 +49,10 @@ daemon (4.2c, later)                 this app (4.2b)
 
 ## Build & run
 
+> **One-time prerequisite:** the app links the proprietary Live2D Cubism Core, which
+> is not committed to this repo. Download the free Cubism SDK for Native and drop in
+> two files first — see [`Vendor/Live2DCore/README.md`](Vendor/Live2DCore/README.md).
+
 ```sh
 cd avatar
 swift build                       # compiles spine-cpp + the app
