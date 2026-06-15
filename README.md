@@ -10,9 +10,9 @@ the thread.
 It runs as a **Claude Code plugin** backed by a local, zero-dependency daemon, with
 an optional native macOS **desk-pet avatar** that reacts to what the agent is doing.
 
-> **Status: v1 — functional end to end, pre-public-release.** macOS-only, built for
-> personal use. Open-source licensing and a packaged release will follow once it's
-> been polished. Expect rough edges in setup.
+> **Status: v1 — functional end to end.** macOS-only, built for personal use and
+> released as open source under the MIT license (see [License](#license)). Expect
+> some rough edges in setup.
 
 ---
 
@@ -67,7 +67,7 @@ socket. The **daemon** is the single source of truth and does all the work:
    avatar's state/expression/thought stream.
 
 The daemon has **zero runtime dependencies** — only Node built-ins (`fetch`,
-`node:sqlite`, …) and macOS system tools (`say`, `afplay`, `osascript`, `sips`).
+`node:sqlite`, …) and macOS system tools (`say`, `afplay`, `osascript`).
 
 ---
 
@@ -91,10 +91,12 @@ npm run build      # compile TypeScript → dist/
 ```
 
 Familiar ships as a **Claude Code plugin** (`.claude-plugin/plugin.json` +
-`hooks/hooks.json`). Once it's enabled in Claude Code, the hooks register
-automatically and the daemon starts itself on the next `SessionStart` — there's
-nothing to run by hand. After that, just use Claude Code normally; Familiar
-narrates ambient activity and speaks the recap when a run lands.
+`hooks/hooks.json`). Run `npm run build` **before** enabling it — the hooks invoke
+the compiled `dist/bin/*.js`, so the plugin is inert until the build exists. Once
+it's enabled in Claude Code, the hooks register automatically and the daemon starts
+itself on the next `SessionStart` — there's nothing to run by hand. After that,
+just use Claude Code normally; Familiar narrates ambient activity and speaks the
+recap when a run lands.
 
 All of Familiar's state lives under one removable root, **`$FAMILIAR_HOME`**
 (default `~/.familiar`) — delete it and nothing is left behind.
@@ -145,16 +147,24 @@ Settings are stored under `$FAMILIAR_HOME`: `settings.json` for preferences and
 ## The avatar (optional desk pet)
 
 The voice + recap core works without it, but Familiar can also render a native,
-transparent, always-on-top macOS overlay that reacts to the agent's state. The
-free **Haru** Live2D sample is bundled; a Spine character is the fallback.
+transparent, always-on-top macOS overlay that reacts to the agent's state. A
+**Spine** sample character (`spineboy`) is **bundled**, so the overlay renders out
+of the box:
 
 ```sh
 cd avatar
 swift build --product FamiliarAvatar
-.build/debug/FamiliarAvatar \
-  --character "$PWD/characters/haru" --monitor 0 \
+.build/debug/FamiliarAvatar --monitor 0 \
   --config-cmd "node /abs/path/to/dist/bin/familiar-config.js"
+# renders the bundled spineboy Spine sample by default
 ```
+
+**Want the Live2D look (Haru)?** The free Haru Cubism sample is **not** bundled —
+it ships under Live2D's Free Material License and is kept out of this repo. Download
+it from [Live2D](https://www.live2d.com/en/learn/sample/), drop it into
+`avatar/characters/haru/`, then launch with `--character "$PWD/characters/haru"`.
+See [`avatar/characters/valerie/`](avatar/characters/valerie/) for how to wire up
+your own commissioned Spine character via a `*.config.json`.
 
 Interacting with her (she's **click-through by default**, so your clicks reach the
 apps behind her):
@@ -216,6 +226,14 @@ project under `avatar/` (built and verified separately from the Node test suite)
 
 ## License
 
-To be determined before public release. The avatar bundles third-party runtimes
-(Live2D Cubism, Spine) under their own terms — see
-[`avatar/THIRD-PARTY-NOTICES.md`](avatar/THIRD-PARTY-NOTICES.md).
+Familiar's own source code is released under the **MIT license** — see
+[`LICENSE`](LICENSE).
+
+The optional macOS avatar bundles third-party runtimes under their own separate
+terms (these are **not** covered by the MIT license): the **Spine Runtimes** and
+the **spineboy** sample asset (Esoteric Software — evaluation use; each user must
+obtain their own Spine Editor license), and the **Live2D Cubism** Core + Native
+Framework (Live2D Inc. — proprietary / Open Software License). Notably, shipping a
+Live2D "Expandable Application" that loads arbitrary Cubism models for distribution
+may require a separate paid Live2D license. Full details, copyright notices, and
+links are in [`avatar/THIRD-PARTY-NOTICES.md`](avatar/THIRD-PARTY-NOTICES.md).

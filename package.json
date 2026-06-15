@@ -1,9 +1,13 @@
 {
   "name": "familiar-daemon",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
+  "license": "MIT",
   "description": "Ambient awareness companion for long-running coding-agent sessions.",
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "pretest": "tsc -p tsconfig.build.json",
