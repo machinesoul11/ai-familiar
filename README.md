@@ -87,8 +87,22 @@ The daemon has **zero runtime dependencies** — only Node built-ins (`fetch`,
 git clone https://github.com/machinesoul11/ai-familiar.git
 cd ai-familiar
 npm install        # dev/build tooling only — the daemon itself has no runtime deps
-npm run build      # compile TypeScript → dist/
+npm link           # installs the global `familiar` command (also builds on first use)
 ```
+
+`npm link` puts a single **`familiar`** command on your `PATH`. Everything is a
+subcommand of it:
+
+```sh
+familiar doctor                          # show what's set up
+familiar config set voice elevenlabs     # read/write settings + the ElevenLabs secret
+familiar avatar                          # launch the desk-pet overlay
+familiar recap | familiar recall         # replay the latest recap / "while you were away"
+familiar stop                            # silence her mid-sentence
+```
+
+The first `familiar` command compiles TypeScript → `dist/` automatically; you can
+also build explicitly with `npm run build`.
 
 Familiar ships as a **Claude Code plugin** (`.claude-plugin/plugin.json` +
 `hooks/hooks.json`). Run `npm run build` **before** enabling it — the hooks invoke
@@ -125,18 +139,20 @@ Under the hood the pane shells out to the **`familiar-config`** CLI, so all
 validation lives in one place. You can use that CLI directly too:
 
 ```sh
-familiar-config list
-familiar-config set voice elevenlabs
-familiar-config set recapLang ja
-familiar-config set avatar.scale 1.25
-familiar-config set-secret apiKey <key>
-familiar-config init        # first-run wizard
+familiar config list
+familiar config set voice elevenlabs
+familiar config set recapLang ja
+familiar config set avatar.scale 1.25
+familiar config set-secret apiKey <key>
+familiar config init        # first-run wizard
 ```
 
-(Run these as `node dist/bin/familiar-config.js …` from the repo, or wire up a
-shortcut.) The menu bar pane only writes when it knows where that CLI is: launch
-the avatar with `--config-cmd "node /abs/path/to/dist/bin/familiar-config.js"` (or
-set the `FAMILIAR_CONFIG` env var). Without it, the menu is read-only.
+(Without `npm link`, run these as `node dist/bin/familiar-config.js …` from the
+repo.) The menu bar pane only writes when it knows where that CLI is — `familiar
+avatar` wires this up for you automatically (it passes the absolute
+`--config-cmd`); if you launch the avatar binary by hand, pass
+`--config-cmd "node /abs/path/to/dist/bin/familiar-config.js"` (or set the
+`FAMILIAR_CONFIG` env var). Without it, the menu is read-only.
 
 Settings are stored under `$FAMILIAR_HOME`: `settings.json` for preferences and
 `.env` for the ElevenLabs secret. Secrets are never written into the repo
@@ -148,30 +164,42 @@ Settings are stored under `$FAMILIAR_HOME`: `settings.json` for preferences and
 
 The voice + recap core works without it, but Familiar can also render a native,
 transparent, always-on-top macOS overlay that reacts to the agent's state. A
-**Spine** sample character (`spineboy`) is **bundled** and is the default renderer.
-
-> **One-time prerequisite:** the avatar app embeds the Live2D Cubism renderer, so it
-> links the proprietary **Cubism Core**, which is *not* shipped in this repo (its
-> license forbids standalone redistribution). Download the free **Cubism SDK for
-> Native** and drop in two files first — see
-> [`avatar/Vendor/Live2DCore/README.md`](avatar/Vendor/Live2DCore/README.md). The Node
-> daemon (Familiar's core) needs none of this.
+**Spine** sample character (`spineboy`) is **bundled** and is the default renderer:
 
 ```sh
-cd avatar
-# (place the Cubism Core first — see the note above)
-swift build --product FamiliarAvatar
-.build/debug/FamiliarAvatar --monitor 0 \
-  --config-cmd "node /abs/path/to/dist/bin/familiar-config.js"
-# renders the bundled spineboy Spine sample by default
+familiar avatar                 # builds + launches the overlay — no downloads
 ```
 
-**Want the Live2D look (Haru)?** The free Haru Cubism sample is **not** bundled —
-it ships under Live2D's Free Material License and is kept out of this repo. Download
-it from [Live2D](https://www.live2d.com/en/learn/sample/), drop it into
-`avatar/characters/haru/`, then launch with `--character "$PWD/characters/haru"`.
-See [`avatar/characters/valerie/`](avatar/characters/valerie/) for how to wire up
-your own commissioned Spine character via a `*.config.json`.
+That's the whole thing. `familiar avatar` builds the Swift overlay, wires up the
+settings `--config-cmd`, and launches the bundled **spineboy** Spine sample. Pass
+extra flags straight through (`familiar avatar --monitor 1`, `--release` for an
+optimized build). **It needs no proprietary downloads** — the Spine path is fully
+self-contained.
+
+### Optional: the Live2D renderer
+
+Familiar also has a second, **opt-in** renderer for **Live2D Cubism** characters
+(e.g. Haru). It links the proprietary **Cubism Core**, which is *not* shipped in
+this repo (its license forbids standalone redistribution), so it's gated behind a
+`--live2d` flag and a one-time free download:
+
+```sh
+# 1. download the free Cubism SDK for Native: https://www.live2d.com/en/sdk/download/native/
+familiar setup-live2d ~/Downloads/CubismSdkForNative-5-r.5   # one-time, copies 2 files
+familiar avatar --live2d                                    # spineboy stays the default
+```
+
+`familiar setup-live2d` copies the two required files into their (gitignored)
+spots; `familiar avatar --live2d` then compiles the Cubism renderer in (via
+`FAMILIAR_LIVE2D=1`). Without `--live2d`, none of this is touched and none of it
+is required. The Node daemon (Familiar's core) never needs any of it.
+
+The free **Haru** Cubism sample is itself **not** bundled (Live2D Free Material
+License) — download it from [Live2D](https://www.live2d.com/en/learn/sample/), drop
+it into `avatar/characters/haru/`, then launch
+`familiar avatar --live2d --character "$PWD/characters/haru"`. See
+[`avatar/characters/valerie/`](avatar/characters/valerie/) for how to wire up your
+own commissioned Spine character via a `*.config.json` (no Live2D needed).
 
 Interacting with her (she's **click-through by default**, so your clicks reach the
 apps behind her):
@@ -239,11 +267,13 @@ Familiar's own source code is released under the **MIT license** — see
 The optional macOS avatar bundles third-party runtimes under their own separate
 terms (these are **not** covered by the MIT license): the **Spine Runtimes** and
 the **spineboy** sample asset (Esoteric Software — evaluation use; each user must
-obtain their own Spine Editor license), and the **Live2D Cubism Native Framework**
-(Live2D Inc. — Open Software License). The proprietary **Live2D Cubism Core** is
-**not** shipped here — its license forbids standalone redistribution, so you
+obtain their own Spine Editor license), and — **only in the optional `--live2d`
+build** — the **Live2D Cubism Native Framework** (Live2D Inc. — Open Software
+License). The proprietary **Live2D Cubism Core** is **not** shipped here — its
+license forbids standalone redistribution, so if you opt into `--live2d` you
 download the free Cubism SDK for Native yourself (see
-[`avatar/Vendor/Live2DCore/README.md`](avatar/Vendor/Live2DCore/README.md)).
+[`avatar/Vendor/Live2DCore/README.md`](avatar/Vendor/Live2DCore/README.md)). The
+default avatar build pulls in none of the Live2D components.
 Separately, shipping a Live2D "Expandable Application" that loads arbitrary Cubism
 models for distribution may require a paid Live2D license. Full details, copyright
 notices, and links are in

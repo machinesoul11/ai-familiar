@@ -289,12 +289,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// self. Returns false if the pack can't be loaded for that renderer.
     private func buildRenderer(character: ResolvedCharacter, view: DraggableMetalView) -> Bool {
         switch character.config.renderer {
+#if LIVE2D
         case "live2d":
             injectCubismShaderSource() // runtime-compile the Cubism Metal shaders (CLT, no metallib)
             guard let r = MetalCubismRenderer(view: view, character: character) else { return false }
             self.model = r.model
             self.renderer = r
             return true
+#else
+        case "live2d":
+            // This is a spineboy-only build (the default — no proprietary Cubism
+            // Core). A Live2D pack needs the Live2D renderer, so rebuild with it:
+            FileHandle.standardError.write(Data("[avatar] character pack '\(character.config.id ?? "?")' uses the Live2D renderer, which isn't in this build. Rebuild with Live2D: `familiar avatar --live2d` (needs the free Cubism Core — `familiar setup-live2d <sdk>`).\n".utf8))
+            return false
+#endif
         default: // "spine" or absent — the bundled default
             guard let m = SpineModel(character: character),
                   let r = MetalSpineRenderer(view: view, model: m) else { return false }

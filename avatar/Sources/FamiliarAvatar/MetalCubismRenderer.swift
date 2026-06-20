@@ -1,3 +1,6 @@
+// Compiled only in a Live2D build (FAMILIAR_LIVE2D=1 / `familiar avatar --live2d`).
+// Without the LIVE2D flag the avatar is spineboy-only and links no Cubism code.
+#if LIVE2D
 import MetalKit
 import CubismLive2D
 
@@ -97,3 +100,4 @@ func injectCubismShaderSource() {
     let combined = metalSrc.replacingOccurrences(of: "#include \"MetalShaderTypes.h\"", with: typesSrc)
     combined.withCString { cubism_set_metal_shader_source($0) }
 }
+#endif // LIVE2D

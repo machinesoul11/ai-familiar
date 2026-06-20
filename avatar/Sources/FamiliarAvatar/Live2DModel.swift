@@ -1,3 +1,6 @@
+// Compiled only in a Live2D build (FAMILIAR_LIVE2D=1 / `familiar avatar --live2d`).
+// Without the LIVE2D flag the avatar is spineboy-only and links no Cubism code.
+#if LIVE2D
 import Foundation
 import Metal
 import CubismLive2D
@@ -98,3 +101,4 @@ final class Live2DModel: AvatarModel {
         }
     }
 }
+#endif // LIVE2D

@@ -5,6 +5,9 @@
   "type": "module",
   "license": "MIT",
   "description": "Ambient awareness companion for long-running coding-agent sessions.",
+  "bin": {
+    "familiar": "bin/familiar.js"
+  },
   "engines": {
     "node": ">=22.5.0"
   },

@@ -6,8 +6,10 @@ redistribution only when the Core is *embedded in a finished application*, **not
 as standalone library files published in a public source repository. So Familiar
 does **not** commit the Core — you download it yourself (it's free for this use).
 
-You only need this if you want the **Live2D** renderer. The default avatar uses the
-bundled **Spine** sample (`spineboy`) and does not need any of this.
+You only need this if you opt into the **Live2D** renderer (`familiar avatar
+--live2d` / `FAMILIAR_LIVE2D=1`). The default avatar uses the bundled **Spine**
+sample (`spineboy`), builds with **zero downloads**, and does not need any of this
+— `Package.swift` excludes the Cubism target entirely unless Live2D is enabled.
 
 ## Get it
 
@@ -23,13 +25,17 @@ bundled **Spine** sample (`spineboy`) and does not need any of this.
 
    (Both paths are gitignored, so they stay local and are never committed.)
 
-3. Build the avatar as usual:
+   (Or just run `familiar setup-live2d /path/to/CubismSdkForNative-<version>` and it
+   copies both files into place for you.)
+
+3. Build the avatar with Live2D enabled:
 
    ```sh
-   cd avatar
-   swift build --product FamiliarAvatar
+   familiar avatar --live2d
+   # equivalently, by hand:
+   cd avatar && FAMILIAR_LIVE2D=1 swift build --product FamiliarAvatar
    ```
 
-Until both files are in place, the avatar target won't link (it depends on the
-Cubism renderer). The Node daemon — Familiar's core — has no dependency on any of
-this and builds/tests on its own.
+Without `FAMILIAR_LIVE2D=1` the avatar builds spineboy-only and needs none of these
+files (the Cubism target is excluded from the package). The Node daemon — Familiar's
+core — has no dependency on any of this and builds/tests on its own.

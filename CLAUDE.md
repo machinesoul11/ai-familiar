@@ -60,9 +60,14 @@ import-graph delta evaluated against an optional `.familiar/manifest.json`) →
 - Hooks are inert until `npm run build` produces `dist/bin/*.js`.
 - The avatar ships the `spineboy` Spine sample (the default). The Haru Live2D sample
   is **not** bundled (Live2D Free Material License) — download separately.
-- The proprietary **Live2D Cubism Core** (`.a` + `Live2DCubismCore.h`) is **not**
-  committed (its license forbids standalone redistribution; both paths are gitignored).
-  The avatar target links it, so building the avatar needs a one-time free Cubism SDK
-  download — see `avatar/Vendor/Live2DCore/README.md`. The Node daemon needs none of it.
+- The Live2D Cubism renderer is **opt-in** (`FAMILIAR_LIVE2D=1`, i.e.
+  `familiar avatar --live2d`). The default `swift build --product FamiliarAvatar`
+  is **spineboy-only and needs no downloads** — `Package.swift` excludes the
+  `CubismLive2D` target entirely when the env flag is unset, and the two Cubism
+  source files are wrapped in `#if LIVE2D`. The proprietary **Live2D Cubism Core**
+  (`.a` + `Live2DCubismCore.h`) is **not** committed (license forbids standalone
+  redistribution; both paths gitignored); only the `--live2d` build needs it — get
+  it via `familiar setup-live2d <sdk>` (see `avatar/Vendor/Live2DCore/README.md`).
+  The Node daemon needs none of it.
 - macOS-specific: voice talk-back (STT) needs a signed `.app` (TCC); see
   `avatar/scripts/build-app.sh`. `osascript` notification banners are dead on macOS 26.
