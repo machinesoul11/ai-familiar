@@ -120,11 +120,20 @@ final class SettingsMenuController: NSObject, NSMenuDelegate {
                   enabled: writable, action: .set(key: "voice", value: "elevenlabs"))
         voiceMenu.addItem(.separator())
         addChoice(to: voiceMenu, title: "Set ElevenLabs key…", checked: false,
-                  enabled: writable, action: .setSecret)
-        let secretNote = NSMenuItem(title: hasSecret ? "ElevenLabs key: set" : "ElevenLabs key: not set",
-                                    action: nil, keyEquivalent: "")
-        secretNote.isEnabled = false
-        voiceMenu.addItem(secretNote)
+                  enabled: writable, action: .setSecret(name: "apiKey"))
+        let keyNote = NSMenuItem(title: hasSecret ? "ElevenLabs key: set" : "ElevenLabs key: not set",
+                                 action: nil, keyEquivalent: "")
+        keyNote.isEnabled = false
+        voiceMenu.addItem(keyNote)
+        // Voice ID — required alongside the key (without it the daemon silently
+        // falls back to `say`), so expose it here too, not just on the CLI.
+        addChoice(to: voiceMenu, title: "Set ElevenLabs Voice ID…", checked: false,
+                  enabled: writable, action: .setSecret(name: "voiceId"))
+        let voiceIdNote = NSMenuItem(title: stored.elevenLabsVoicePresent ? "Voice ID: set"
+                                        : "Voice ID: not set (required for ElevenLabs)",
+                                     action: nil, keyEquivalent: "")
+        voiceIdNote.isEnabled = false
+        voiceMenu.addItem(voiceIdNote)
         addSubmenu(to: menu, title: "Voice", submenu: voiceMenu)
 
         // Recap language — daemon field.
@@ -253,8 +262,8 @@ final class SettingsMenuController: NSObject, NSMenuDelegate {
             if runConfig(["unset", key]) && key.hasPrefix("avatar.") {
                 offerRelaunch(for: key)
             }
-        case .setSecret:
-            promptForSecret()
+        case let .setSecret(name):
+            promptForSecret(name: name)
         case .relaunch:
             relaunch()
         case .quit:
@@ -326,26 +335,33 @@ final class SettingsMenuController: NSObject, NSMenuDelegate {
         }
     }
 
-    /// Prompt for the ElevenLabs API key in a secure field and write it via
-    /// `familiar-config set-secret apiKey`. The key is never logged or echoed.
-    private func promptForSecret() {
+    /// Prompt for an ElevenLabs secret and write it via `familiar-config
+    /// set-secret <name>`. The API key is sensitive → secure field, never logged
+    /// or echoed; the voice ID is a public identifier → plain field. Both land in
+    /// $FAMILIAR_HOME/.env.
+    private func promptForSecret(name: String) {
+        let isKey = (name == "apiKey")
         let alert = NSAlert()
-        alert.messageText = "Set ElevenLabs API key"
-        alert.informativeText = "Stored in $FAMILIAR_HOME/.env (mode 0600). Restart the daemon to apply."
+        alert.messageText = isKey ? "Set ElevenLabs API key" : "Set ElevenLabs Voice ID"
+        alert.informativeText = isKey
+            ? "Stored in $FAMILIAR_HOME/.env (mode 0600). Restart the daemon to apply."
+            : "The ElevenLabs voice to speak with — required for ElevenLabs (without it the daemon falls back to the macOS `say` voice). Stored in $FAMILIAR_HOME/.env. Restart the daemon to apply."
         alert.addButton(withTitle: "Save")
         alert.addButton(withTitle: "Cancel")
-        let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
-        field.placeholderString = "ELEVENLABS_API_KEY"
+        let field: NSTextField = isKey
+            ? NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+            : NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        field.placeholderString = isKey ? "ELEVENLABS_API_KEY" : "ELEVENLABS_VOICE_ID"
         alert.accessoryView = field
         alert.window.initialFirstResponder = field
 
         if alert.runModal() == .alertFirstButtonReturn {
             let value = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             if value.isEmpty {
-                warn("Empty key.", "No key was entered; nothing was written.")
+                warn("Empty value.", "Nothing was entered; nothing was written.")
                 return
             }
-            runConfig(["set-secret", "apiKey", value])
+            runConfig(["set-secret", name, value])
         }
     }
 
@@ -401,7 +417,7 @@ private final class ActionBox {
 private enum MenuAction {
     case set(key: String, value: String)
     case unset(key: String)
-    case setSecret
+    case setSecret(name: String)
     case relaunch
     case quit
 }
@@ -423,10 +439,12 @@ private struct StoredConfig {
     var monitor: Int?
     var character: String?
     var elevenLabsKeyPresent: Bool = false
+    var elevenLabsVoicePresent: Bool = false
 
     static func load(home: String) -> StoredConfig {
         var c = StoredConfig()
-        c.elevenLabsKeyPresent = secretPresent(home: home)
+        c.elevenLabsKeyPresent = envValuePresent(home: home, key: "ELEVENLABS_API_KEY")
+        c.elevenLabsVoicePresent = envValuePresent(home: home, key: "ELEVENLABS_VOICE_ID")
 
         let path = (home as NSString).appendingPathComponent("settings.json")
         guard let data = FileManager.default.contents(atPath: path),
@@ -448,14 +466,15 @@ private struct StoredConfig {
         return c
     }
 
-    /// True iff `$FAMILIAR_HOME/.env` has a non-empty `ELEVENLABS_API_KEY=` line.
-    private static func secretPresent(home: String) -> Bool {
+    /// True iff `$FAMILIAR_HOME/.env` has a non-empty `<key>=` line.
+    private static func envValuePresent(home: String, key: String) -> Bool {
         let path = (home as NSString).appendingPathComponent(".env")
         guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return false }
+        let prefix = "\(key)="
         for line in text.split(whereSeparator: { $0 == "\n" || $0 == "\r" }) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard trimmed.hasPrefix("ELEVENLABS_API_KEY=") else { continue }
-            let value = trimmed.dropFirst("ELEVENLABS_API_KEY=".count).trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix(prefix) else { continue }
+            let value = trimmed.dropFirst(prefix.count).trimmingCharacters(in: .whitespaces)
             return !value.isEmpty
         }
         return false
