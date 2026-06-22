@@ -100,11 +100,19 @@ struct ResolvedCharacter {
         let famDir = URL(fileURLWithPath: home).appendingPathComponent("character", isDirectory: true)
         if let resolved = load(in: famDir) { return resolved }
 
-        if let bundled = Bundle.module.url(forResource: "spineboy.config", withExtension: "json", subdirectory: "Resources"),
-           let config = decode(bundled) {
-            return ResolvedCharacter(config: config, directory: bundled.deletingLastPathComponent())
-        }
-        return nil
+        return bundledDefault()
+    }
+
+    /// The bundled `spineboy` pack — the guaranteed-present last resort. It is
+    /// both the final step of `resolve` and the runtime fallback for when a
+    /// configured pack *resolves* (its `*.config.json` parses) but then fails to
+    /// actually load — e.g. a config pointing at missing Spine assets, or a
+    /// Live2D pack in a spine-only build. Lets the avatar always render something
+    /// instead of a fatal crash.
+    static func bundledDefault() -> ResolvedCharacter? {
+        guard let bundled = Bundle.module.url(forResource: "spineboy.config", withExtension: "json", subdirectory: "Resources"),
+              let config = decode(bundled) else { return nil }
+        return ResolvedCharacter(config: config, directory: bundled.deletingLastPathComponent())
     }
 
     private static func load(in directory: URL) -> ResolvedCharacter? {

@@ -175,7 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        guard let character = ResolvedCharacter.resolve(option: options.characterDir) else {
+        guard var character = ResolvedCharacter.resolve(option: options.characterDir) else {
             fail("no character pack found (and bundled spineboy missing)")
             return
         }
@@ -196,9 +196,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Pick the renderer backend from the pack's config. Each path is
         // self-contained (Spine emits meshes our renderer draws; Cubism renders
         // itself) — only this seam and AvatarModel.apply are shared.
-        guard buildRenderer(character: character, view: view) else {
-            fail("failed to load character '\(character.config.id ?? "?")' (renderer '\(character.config.renderer ?? "spine")') from \(character.directory.path)")
-            return
+        //
+        // If the configured pack resolves but fails to load (missing Spine
+        // assets, or a Live2D pack in a spine-only build), don't crash — warn
+        // and fall back to the bundled spineboy so the avatar always renders.
+        if !buildRenderer(character: character, view: view) {
+            FileHandle.standardError.write(Data("[avatar] couldn't load character '\(character.config.id ?? "?")' (renderer '\(character.config.renderer ?? "spine")') from \(character.directory.path) — falling back to the bundled spineboy. (Set a valid avatar.character, or unset it: `familiar config unset avatar.character`.)\n".utf8))
+            guard let fallback = ResolvedCharacter.bundledDefault(),
+                  fallback.directory.path != character.directory.path, // don't retry the same pack
+                  buildRenderer(character: fallback, view: view) else {
+                fail("failed to load character '\(character.config.id ?? "?")' and the bundled spineboy fallback")
+                return
+            }
+            character = fallback
         }
         view.delegate = renderer
         window.contentView = view
